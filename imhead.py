@@ -17,18 +17,20 @@ def parse_args():
                         help="dump only the named extension header")
     parser.add_argument("--hduindex", type=int,
                         help="dump only id'd extension header")
+    parser.add_argument("--unsorted", action='store_true',
+                        help="print headers in index order")
     parser.add_argument("--all",
                         action='store_true', help="print all extensions")
-    opts = parser.parse_args()
-    return opts
+    return parser.parse_args()
+    # return opts
 
 
-def header_print():
+def header_print(opts):
     """print the headers according to the options
     """
-    seglist = {}      # dict to hold segment names old and new hdulist indexes
+    seglist = {}      # dict to hold segment name, index as k,v
     otherlist = {}    # dict to hold non-image HDU's (except for primary)
-    opts = parse_args()
+    # opts = parse_args()
     hdulist = fits.open(opts.fitsfile)
     # just print the image info with indexes, names, sizes
     if opts.info:
@@ -36,18 +38,17 @@ def header_print():
     # print single hdu by name
     elif opts.hduname:
         index = hdulist.index_of(opts.hduname)
-        hdu = fits.ImageHDU(header=hdulist[index].header)
+        hdu = hdulist[index]
         print "#--------{}---------".format(opts.hduname)
         print hdu.header.tostring(sep='\n', endcard=False, padding=False)
-
     # print single hdu by index
     elif opts.hduindex:
-        hdu = fits.ImageHDU(header=hdulist[opts.hduindex].header)
+        hdu = hdulist[opts.hduindex]
         print "#--------extension {}---------".format(opts.hduindex)
         print hdu.header.tostring(sep='\n', endcard=False, padding=False)
     # print primary and Image headers, others optionally
     else:
-        # build dicts
+        # build dicts etc. to facilitate processing
         for hdu in hdulist:
             index = hdulist.index_of(hdu.name)
             if isinstance(hdu, fits.ImageHDU):
@@ -57,24 +58,33 @@ def header_print():
             else:
                 otherlist[hdu.name] = index
         # print the primary
-        hdu = fits.ImageHDU(header=hdulist[pindex].header)
+        hdu = hdulist[pindex]
         print "#--------{}---------".format(hdu.name)
         print hdu.header.tostring(sep='\n', endcard=False, padding=False)
         # print the Image headers
-        for name, index in sorted(seglist.iteritems()):
-            hdu = fits.ImageHDU(header=hdulist[index].header)
-            print "#--------{}---------".format(hdu.name)
-            print hdu.header.tostring(sep='\n', endcard=False, padding=False)
+        if opts.unsorted:
+            # in original index order
+            for hdu in hdulist:
+                print "#--------{}---------".format(hdu.name)
+                print hdu.header.tostring(
+                    sep='\n', endcard=False, padding=False)
+        else:
+            # sorted by name (default)
+            for name, index in sorted(seglist.iteritems()):
+                hdu = hdulist[index]
+                print "#--------{}---------".format(name)
+                print hdu.header.tostring(
+                    sep='\n', endcard=False, padding=False)
         # print the other headers
         if opts.all:
             ids = list(otherlist.values())
             for index in sorted(ids):
-                hdu = fits.ImageHDU(header=hdulist[index].header)
+                hdu = hdulist[index]
                 print "#--------{}---------".format(hdu.name)
                 print hdu.header.tostring(sep='\n',
                                           endcard=False, padding=False)
-
     hdulist.close()
 
 if __name__ == '__main__':
-    header_print()
+    optlist = parse_args()
+    header_print(optlist)
