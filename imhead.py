@@ -64,7 +64,10 @@ def header_print(opts):
         # print the Image headers
         if opts.unsorted:
             # in original index order
-            for hdu in hdulist:
+            # for hdu in hdulist:
+            ids = list(seglist.values())
+            for index in sorted(ids):
+                hdu = hdulist[index]
                 print "#--------{}---------".format(hdu.name)
                 print hdu.header.tostring(
                     sep='\n', endcard=False, padding=False)

@@ -15,7 +15,7 @@ def parse_args():
         description="Copy MEF fits file with reordered ImageHDUs "
         "All other HDU types have order preserved")
     parser.add_argument("ifitsfile", help="input fits file")
-    parser.add_argument("ofitsfile", help="output fits file")
+    parser.add_argument("ofitsfile", nargs='?', help="output fits file")
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
     group = parser.add_mutually_exclusive_group()
@@ -42,6 +42,7 @@ def hdu_writer(opts):
     # just print the image info with indexes, names, sizes
     if opts.info:
         hdulist.info()
+        return 0
 
     # process primary and Image headers, and other HDUs
     # build dicts etc. to facilitate processing
@@ -86,8 +87,9 @@ def hdu_writer(opts):
         hdulisto.append(hdu)
 
     hdulisto.info()
-    hdulisto.writeto(opts.ofitsfile, clobber=True)
-    hdulisto.close()
+    if opts.ofitsfile:
+        hdulisto.writeto(opts.ofitsfile, clobber=True)
+        hdulisto.close()
     hdulist.close()
 
 if __name__ == '__main__':
