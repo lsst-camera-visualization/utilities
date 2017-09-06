@@ -6,6 +6,7 @@ Calculate statistical results for FITS images
 import os.path
 import re
 import argparse
+import logging
 from astropy.io import fits
 import numpy as np
 
@@ -17,19 +18,21 @@ def parse_args():
                         metavar="file", help="input fits file")
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
-    parser.add_argument("--noheadings", action='store_true', default=False,
-                        help="Don't print column heads for stats")
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--hduname", nargs='+',
+    parser.add_argument("--noheadings", action='store_true',
+              default=False, help="Don't print column heads for stats")
+    hgroup = parser.add_mutually_exclusive_group()
+    hgroup.add_argument("--hduname", nargs='+',
                        metavar='idn', help="process HDU list by names")
-    group.add_argument("--hduindex", nargs='+', type=int,
+    hgroup.add_argument("--hduindex", nargs='+', type=int,
                        metavar='idx', help="process HDU list by ids")
-    parser.add_argument("--region", nargs='+', metavar='reg',
-                        help="region fmt: \"x1:x2,y1:y2\"")
-    parser.add_argument("--stats", nargs='+', metavar='stat',
+    sgroup = parser.add_argument_group("stats",
+               "select statistics and regions (exclusive of quicklook)")
+    sgroup.add_argument("--region", nargs='+', metavar='reg',
+                        help="region fmt: \"x1:x2,y1:y2\",")
+    sgroup.add_argument("--stats", nargs='+', metavar='stat',
                         help="select: mean median stddev min max")
     parser.add_argument("--quicklook", action='store_true',
-                        help="estimate signal, noise, counts/sec in adus")
+                     help="estimate signal, noise, counts/sec in adus")
     return parser.parse_args()
 
 def stat_print(hdulist):
@@ -38,7 +41,13 @@ def stat_print(hdulist):
     hduids = []  #-- make a list of HDU ids to work on
     if optlist.hduname:
         for hduname in optlist.hduname:
-            hduids.append(hdulist.index_of(hduname))
+            try:
+                hduids.append(hdulist.index_of(hduname))
+            except KeyError as ke:
+                emsg = "KeyError: {}".format(ke)
+                logging.error(emsg)
+                exit(1)
+
     elif optlist.hduindex:
         hduids = optlist.hduindex
     else: #- all segments
@@ -53,26 +62,30 @@ def stat_print(hdulist):
         if not optlist.region:
             do_stats(hduid, name, pix, reg)
         else:
-            for  reg in optlist.region:
+            for reg in optlist.region:
                 res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*", reg)
                 if res:
                     (x1, x2, y1, y2) = res.groups()
                     do_stats(hduid, name, pix[int(y1):int(y2),
-                                            int(x1):int(x2)], reg)
-                else: #- region = [*,y1:y2]
-                    res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
-                    if res:
-                        (x, y1, y2) = res.groups()
-                        do_stats(hduid, name, pix[int(y1):int(y2),:], reg)
-                    else: # reg = [x1:x2,*]
-                        res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
-                        if res:
-                            (x1, x2, y) = res.groups()
-                            do_stats(hduid, name, pix[:,int(x1):int(x2)], reg)
-                        else:
-                            print "bad region spec {}, no match produced".\
-                                format(res.string())
-                            exit(1)
+                                              int(x1):int(x2)], reg)
+                    continue
+                #- region = [*,y1:y2]
+                res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
+                if res:
+                    (x, y1, y2) = res.groups()
+                    do_stats(hduid, name, pix[int(y1):int(y2), :], reg)
+                    continue
+                # reg = [x1:x2,*]
+                res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
+                if res:
+                    (x1, x2, y) = res.groups()
+                    do_stats(hduid, name, pix[:, int(x1):int(x2)], reg)
+                    continue
+                else:
+                    emsg = "bad region spec {}, no match produced".\
+                        format(reg)
+                    logging.error(emsg)
+                    exit(1)
 
 def do_stats(sid, name, buf, reg):
     """perform and print the given statistics quantities
@@ -120,8 +133,10 @@ def quicklook_print(hdulist):
     try:
         expt = float(hdr['EXPTIME'])
     except KeyError as ke:
-        print "Key error: {}".format(ke)
-        print "adu/sec won't be available"
+        emsg = "KeyError: {}".format(ke)
+        logging.warn(emsg)
+        emsg = "adu/sec won't be available"
+        logging.warn(emsg)
         expt = 0.0
     hduids = []  #-- ids of hdus to operate on
     if optlist.hduname:
@@ -141,11 +156,11 @@ def quicklook_print(hdulist):
         try:
             dstr = hdr['DATASEC']
         except KeyError as ke:
-            print "Key error: {}".format(ke)
-            print "DATASEC required for quicklook, exiting..."
+            emsg = "KeyError: {}, required for quicklook mode".format(ke)
+            logging.error(emsg)
             exit(1)
-                #print "datasec={}".format(dstr)
-        res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*", dstr)
+        res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
+                       dstr)
         if res:
             datasec = res.groups()
         naxis1 = int(hdr['NAXIS1'])
@@ -157,7 +172,6 @@ def quicklook_print(hdulist):
         x1 = max(int(int(datasec[1]) - int(datasec[0]))/2 - 150,
                  int(datasec[0]))
         x2 = min(x1+300, int(datasec[1]))
-        #print "sig_buf: x1={}, x2={}, y1={}, y2={}".format(x1,x2,y1,y2)
         sig_buf = pix[y1:y2,x1:x2]
 
         #bias_region = "[y1:y2,x1:x2]"
@@ -165,10 +179,12 @@ def quicklook_print(hdulist):
         y2 = min(y1+300, int(datasec[3]))
         x1 = int(datasec[1]) + 2
         x2 = naxis1 - 2
-        #print "bias_buf x1={}, x2={}, y1={}, y2={}".format(x1,x2,y1,y2)
         if y1 > y2 or x1 > x2:
-            print "No bias region available for datasec={} with naxis1={}, naxis2={}".\
+            emsg = "No bias region available for datasec={}"\
+                " with naxis1={}, naxis2={}".\
                 format(datasec,naxis1,naxis2)
+            logging.error(emsg)
+            exit(1)
         bias_buf = pix[y1:y2,x1:x2]
         do_quicklook(hduid, name, sig_buf, bias_buf, expt)
 
@@ -216,6 +232,9 @@ def ncalls():
     ncalls.counter += 1
 
 if __name__ == '__main__':
+
+    logging.basicConfig(format='%(levelname)s: %(message)s',
+                        level=logging.DEBUG)
     optlist = parse_args()
     ncalls.counter = 0
     # begin processing
@@ -223,7 +242,8 @@ if __name__ == '__main__':
         try:
             hdulist = fits.open(ffile)
         except IOError as ioerr:
-            print "I/O error: {}".format(ioerr.strerror)
+            emsg = "IOError: {}".format(ioerr)
+            logging.error(emsg)
             exit(1)
         if optlist.info: # just print the image info and exit
             hdulist.info()
