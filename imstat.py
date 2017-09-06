@@ -19,23 +19,50 @@ def parse_args():
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
     parser.add_argument("--noheadings", action='store_true',
-              default=False, help="Don't print column heads for stats")
+                        default=False, help="Don't print column heads for stats")
     hgroup = parser.add_mutually_exclusive_group()
     hgroup.add_argument("--hduname", nargs='+',
-                       metavar='idn', help="process HDU list by names")
+                        metavar='idn', help="process HDU list by names")
     hgroup.add_argument("--hduindex", nargs='+', type=int,
-                       metavar='idx', help="process HDU list by ids")
+                        metavar='idx', help="process HDU list by ids")
     sgroup = parser.add_argument_group("stats",
-               "select statistics and regions (exclusive of quicklook)")
+                        "select statistics and regions (exclusive of quicklook)")
     sgroup.add_argument("--region", nargs='+', metavar='reg',
                         help="region fmt: \"x1:x2,y1:y2\",")
     sgroup.add_argument("--stats", nargs='+', metavar='stat',
                         help="select: mean median stddev min max")
     parser.add_argument("--quicklook", action='store_true',
-                     help="estimate signal, noise, counts/sec in adus")
+                        help="estimate signal, noise, counts/sec in adus")
     return parser.parse_args()
 
-def stat_print(hdulist):
+def main():
+    """main logic:"""
+    logging.basicConfig(format='%(levelname)s: %(message)s',
+                        level=logging.DEBUG)
+    optlist = parse_args()
+    ncalls.counter = 0
+    # begin processing -- loop over files
+    for ffile in optlist.fitsfile:
+        try:
+            hdulist = fits.open(ffile)
+        except IOError as ioerr:
+            emsg = "IOError: {}".format(ioerr)
+            logging.error(emsg)
+            exit(1)
+        if optlist.info: # just print the image info and exit
+            hdulist.info()
+            exit(0)
+        if not optlist.noheadings: #- print filename
+            print "#"
+            print "# {}".format(hdulist[0].header['filename'])
+        if optlist.quicklook:
+            quicklook(optlist, hdulist)
+        else:
+            stats_proc(optlist, hdulist)
+        ncalls.counter = 0
+
+
+def stats_proc(optlist, hdulist):
     """print statistics for region according to options
     """
     hduids = []  #-- make a list of HDU ids to work on
@@ -60,26 +87,32 @@ def stat_print(hdulist):
         name = hdulist[hduid].name
         reg = ""
         if not optlist.region:
-            do_stats(hduid, name, pix, reg)
+            stats_print(optlist, hduid, name, pix, reg)
         else:
             for reg in optlist.region:
                 res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*", reg)
                 if res:
                     (x1, x2, y1, y2) = res.groups()
-                    do_stats(hduid, name, pix[int(y1):int(y2),
+                    stats_print(optlist, hduid, name, pix[int(y1):int(y2),
                                               int(x1):int(x2)], reg)
                     continue
                 #- region = [*,y1:y2]
                 res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
                 if res:
                     (x, y1, y2) = res.groups()
-                    do_stats(hduid, name, pix[int(y1):int(y2), :], reg)
+                    stats_print(optlist, hduid, name, pix[int(y1):int(y2), :], reg)
                     continue
                 # reg = [x1:x2,*]
                 res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
                 if res:
                     (x1, x2, y) = res.groups()
-                    do_stats(hduid, name, pix[:, int(x1):int(x2)], reg)
+                    stats_print(optlist, hduid, name, pix[:, int(x1):int(x2)], reg)
+                    continue
+                # reg = [*,*] #- redundant, but for completeness
+                res = re.match(r"\[*(\*),(\*)\]*", reg)
+                if res:
+                    (x, y) = res.groups()
+                    stats_print(optlist, hduid, name, pix[:, :], reg)
                     continue
                 else:
                     emsg = "bad region spec {}, no match produced".\
@@ -87,7 +120,7 @@ def stat_print(hdulist):
                     logging.error(emsg)
                     exit(1)
 
-def do_stats(sid, name, buf, reg):
+def stats_print(optlist, sid, name, buf, reg):
     """perform and print the given statistics quantities
     """
     if not optlist.stats:
@@ -126,7 +159,7 @@ def do_stats(sid, name, buf, reg):
     print #-- newline
     ncalls() #-- track call count, acts like static variable
 
-def quicklook_print(hdulist):
+def quicklook(optlist, hdulist):
     """print quicklook for hdu according to options
     """
     hdr = hdulist[0].header
@@ -186,9 +219,9 @@ def quicklook_print(hdulist):
             logging.error(emsg)
             exit(1)
         bias_buf = pix[y1:y2,x1:x2]
-        do_quicklook(hduid, name, sig_buf, bias_buf, expt)
+        quicklook_print(optlist, hduid, name, sig_buf, bias_buf, expt)
 
-def do_quicklook(sid, name, sig_buf, bias_buf, expt):
+def quicklook_print(optlist, sid, name, sig_buf, bias_buf, expt):
     """perform and print the given statistics quantities
        fields are: mean, bias, signal, noise, adu/s
     """
@@ -232,30 +265,7 @@ def ncalls():
     ncalls.counter += 1
 
 if __name__ == '__main__':
-
-    logging.basicConfig(format='%(levelname)s: %(message)s',
-                        level=logging.DEBUG)
-    optlist = parse_args()
-    ncalls.counter = 0
-    # begin processing
-    for ffile in optlist.fitsfile:
-        try:
-            hdulist = fits.open(ffile)
-        except IOError as ioerr:
-            emsg = "IOError: {}".format(ioerr)
-            logging.error(emsg)
-            exit(1)
-        if optlist.info: # just print the image info and exit
-            hdulist.info()
-            exit(0)
-        if not optlist.noheadings:
-            print "#"
-            print "# {}".format(hdulist[0].header['filename'])
-        if optlist.quicklook:
-            quicklook_print(hdulist)
-        else:
-            stat_print(hdulist)
-        ncalls.counter = 0
+    main()
 
 
 
