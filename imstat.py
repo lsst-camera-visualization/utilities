@@ -35,7 +35,7 @@ def parse_args():
 def stat_print(hdulist):
     """print statistics for region according to options
     """
-    hduids = []  #-- ids of hdus to operate on
+    hduids = []  #-- make a list of HDU ids to work on
     if optlist.hduname:
         for hduname in optlist.hduname:
             hduids.append(hdulist.index_of(hduname))
@@ -46,7 +46,7 @@ def stat_print(hdulist):
             if isinstance(hdu, fits.ImageHDU):
                 hduids.append(hdulist.index_of(hdu.name))
 
-    for hduid in hduids:
+    for hduid in hduids: # process each with optional region
         pix = hdulist[hduid].data
         name = hdulist[hduid].name
         reg = ""
@@ -59,12 +59,12 @@ def stat_print(hdulist):
                     (x1, x2, y1, y2) = res.groups()
                     do_stats(hduid, name, pix[int(y1):int(y2),
                                             int(x1):int(x2)], reg)
-                else: #- region = [x1,x2:*]
+                else: #- region = [*,y1:y2]
                     res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
                     if res:
                         (x, y1, y2) = res.groups()
                         do_stats(hduid, name, pix[int(y1):int(y2),:], reg)
-                    else: # reg = [*:y1,y2]
+                    else: # reg = [x1:x2,*]
                         res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
                         if res:
                             (x1, x2, y) = res.groups()
@@ -151,18 +151,18 @@ def quicklook_print(hdulist):
         naxis1 = int(hdr['NAXIS1'])
         naxis2 = int(hdr['NAXIS2'])
         #sig_region = "[y1:y2,x1:x2]"
-        y1 = max(int(int(datasec[3])/2) - 100, int(datasec[2]))
-        y2 = min(y1+200, int(datasec[3]))
-        x1 = max(int(int(datasec[0])/2) - 100, int(datasec[0]))
-        x1 = max(int(int(datasec[1]) - int(datasec[0]))/2 +
-                 int(datasec[0]) - 100, int(datasec[0]))
-        x2 = min(x1+200, int(datasec[1]))
+        y1 = max(int(int(datasec[3])/2) - 150, int(datasec[2]))
+        y2 = min(y1+300, int(datasec[3]))
+        #x1 = max(int(int(datasec[0])/2) - 150, int(datasec[0]))
+        x1 = max(int(int(datasec[1]) - int(datasec[0]))/2 - 150,
+                 int(datasec[0]))
+        x2 = min(x1+300, int(datasec[1]))
         #print "sig_buf: x1={}, x2={}, y1={}, y2={}".format(x1,x2,y1,y2)
         sig_buf = pix[y1:y2,x1:x2]
 
         #bias_region = "[y1:y2,x1:x2]"
-        y1 = max(int(int(datasec[3])/2) - 100, int(datasec[2]))
-        y2 = min(y1+200, int(datasec[3]))
+        y1 = max(int(int(datasec[3])/2) - 150, int(datasec[2]))
+        y2 = min(y1+300, int(datasec[3]))
         x1 = int(datasec[1]) + 2
         x2 = naxis1 - 2
         #print "bias_buf x1={}, x2={}, y1={}, y2={}".format(x1,x2,y1,y2)
@@ -195,10 +195,10 @@ def do_quicklook(sid, name, sig_buf, bias_buf, expt):
         print " {:3d} {:>9s}".format(sid, name),
 
     if "mean" in  quick_fields:
-        sig_mean = np.mean(sig_buf)
+        sig_mean = np.median(sig_buf)
         print "{:>10g}".format(sig_mean),
     if "bias" in  quick_fields:
-        bias_mean = np.mean(bias_buf)
+        bias_mean = np.median(bias_buf)
         print "{:>9g}".format(bias_mean),
     if "signal" in  quick_fields:
         signal = sig_mean - bias_mean
