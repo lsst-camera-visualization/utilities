@@ -3,7 +3,6 @@
 Calculate statistical results for FITS images
 """
 
-import os.path
 import re
 import argparse
 import logging
@@ -25,8 +24,8 @@ def parse_args():
                         metavar='idn', help="process HDU list by names")
     hgroup.add_argument("--hduindex", nargs='+', type=int,
                         metavar='idx', help="process HDU list by ids")
-    sgroup = parser.add_argument_group("stats",
-                        "select statistics and regions (exclusive of quicklook)")
+    sgroup = parser.add_argument_group("stats", "select statistics and regions"
+                                       " (exclusive of quicklook)")
     sgroup.add_argument("--region", nargs='+', metavar='reg',
                         help="region fmt: \"x1:x2,y1:y2\",")
     sgroup.add_argument("--stats", nargs='+', metavar='stat',
@@ -93,8 +92,9 @@ def stats_proc(optlist, hdulist):
                 res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*", reg)
                 if res:
                     (x1, x2, y1, y2) = res.groups()
-                    stats_print(optlist, hduid, name, pix[int(y1):int(y2),
-                                              int(x1):int(x2)], reg)
+                    stats_print(optlist, hduid, name,
+                                pix[int(y1):int(y2),
+                                    int(x1):int(x2)], reg)
                     continue
                 #- region = [*,y1:y2]
                 res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
@@ -137,7 +137,7 @@ def stats_print(optlist, sid, name, buf, reg):
             print "{:>8s}".format("min"),
         if "max" in  optlist.stats:
             print "{:>8s}".format("max"),
-        if len(reg):
+        if reg:
             print " {:21s}".format("region"),
         print #-- newline
 
@@ -154,7 +154,7 @@ def stats_print(optlist, sid, name, buf, reg):
         print "{:>8g}".format(np.min(buf)),
     if "max" in  optlist.stats:
         print "{:>8g}".format(np.max(buf)),
-    if len(reg):
+    if reg:
         print " {:21s}".format(reg),
     print #-- newline
     ncalls() #-- track call count, acts like static variable
@@ -205,7 +205,7 @@ def quicklook(optlist, hdulist):
         x1 = max(int(int(datasec[1]) - int(datasec[0]))/2 - 150,
                  int(datasec[0]))
         x2 = min(x1+300, int(datasec[1]))
-        sig_buf = pix[y1:y2,x1:x2]
+        sig_buf = pix[y1:y2, x1:x2]
 
         #bias_region = "[y1:y2,x1:x2]"
         y1 = max(int(int(datasec[3])/2) - 150, int(datasec[2]))
@@ -215,10 +215,10 @@ def quicklook(optlist, hdulist):
         if y1 > y2 or x1 > x2:
             emsg = "No bias region available for datasec={}"\
                 " with naxis1={}, naxis2={}".\
-                format(datasec,naxis1,naxis2)
+                format(datasec, naxis1, naxis2)
             logging.error(emsg)
             exit(1)
-        bias_buf = pix[y1:y2,x1:x2]
+        bias_buf = pix[y1:y2, x1:x2]
         quicklook_print(optlist, hduid, name, sig_buf, bias_buf, expt)
 
 def quicklook_print(optlist, sid, name, sig_buf, bias_buf, expt):
@@ -266,7 +266,3 @@ def ncalls():
 
 if __name__ == '__main__':
     main()
-
-
-
-
