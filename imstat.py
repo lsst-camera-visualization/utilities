@@ -18,6 +18,8 @@ def parse_args():
                         metavar="file", help="input fits file")
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
+    parser.add_argument("--debug", action='store_true',
+                        help="print additional debugging messages")
     parser.add_argument("--noheadings", action='store_true',
                         default=False, help="Don't print column heads for stats")
     hgroup = parser.add_mutually_exclusive_group()
@@ -37,9 +39,13 @@ def parse_args():
 
 def main():
     """main logic:"""
-    logging.basicConfig(format='%(levelname)s: %(message)s',
-                        level=logging.DEBUG)
     optlist = parse_args()
+    if optlist.debug:
+        logging.basicConfig(format='%(levelname)s: %(message)s',
+                            level=logging.DEBUG)
+    else:
+        logging.basicConfig(format='%(levelname)s: %(message)s',
+                            level=logging.INFO)
     ncalls.counter = 0
     # begin processing -- loop over files
     for ffile in optlist.fitsfile:
