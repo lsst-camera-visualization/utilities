@@ -6,6 +6,7 @@ Calculate statistical results for FITS images
 import re
 import argparse
 import logging
+import os.path
 from astropy.io import fits
 import numpy as np
 
@@ -53,7 +54,11 @@ def main():
             exit(0)
         if not optlist.noheadings: #- print filename
             print "#"
-            print "# {}".format(hdulist[0].header['filename'])
+            #- save this for later review
+            #print "# {}".format(hdulist[0].header['filename'])
+            #print "fitsfile={}".format(ffile)
+            #print os.path.basename(ffile)
+            print "# {}".format(os.path.basename(ffile))
         if optlist.quicklook:
             quicklook(optlist, hdulist)
         else:
@@ -89,24 +94,53 @@ def stats_proc(optlist, hdulist):
             stats_print(optlist, hduid, name, pix, reg)
         else:
             for reg in optlist.region:
-                res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*", reg)
+                res = re.match(
+                    r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
+                    reg)
                 if res:
                     (x1, x2, y1, y2) = res.groups()
                     stats_print(optlist, hduid, name,
-                                pix[int(y1):int(y2),
-                                    int(x1):int(x2)], reg)
+                                pix[int(y1)-1:int(y2),
+                                    int(x1)-1:int(x2)], reg)
                     continue
-                #- region = [*,y1:y2]
+                #- reg = [x0,y1:y2] -- single column
+                res = re.match(r"\[*([0-9]+),([0-9]+):([0-9]+)\]*",
+                               reg)
+                if res:
+                    (x0, y1, y2) = res.groups()
+                    stats_print(optlist, hduid, name,
+                                pix[int(y1)-1:int(y2), int(x0)-1], reg)
+                    continue
+                #- reg = [*,y1:y2]
                 res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
                 if res:
                     (x, y1, y2) = res.groups()
-                    stats_print(optlist, hduid, name, pix[int(y1):int(y2), :], reg)
+                    stats_print(optlist, hduid, name,
+                                pix[int(y1)-1:int(y2), :], reg)
+                    continue
+                # reg = [x0,y0] -- single pixel
+                res = re.match(r"\[*([0-9]+),([0-9]+)\]*", reg)
+                if res:
+                    (x0, y0) = res.groups()
+                    stats_print(optlist, hduid, name,
+                                pix[int(y0)-1, int(x0)-1], reg)
+                    continue
+                # reg = [x1:x2,y0] -- single row
+                res = re.match(r"\[*([0-9]+):([0-9]+),([0-9]+)\]*", reg)
+                if res:
+                    (x1, x2, y0) = res.groups()
+                    stats_print(optlist, hduid, name,
+                                pix[int(y0)-1, int(x1)-1:int(x2)], reg)
+                    myarr = pix[int(y0)-1, int(x1)-1:int(x2)]
+                    print "npix={}".format(myarr.size)
+                    print "pix={}".format(myarr)
                     continue
                 # reg = [x1:x2,*]
                 res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
                 if res:
                     (x1, x2, y) = res.groups()
-                    stats_print(optlist, hduid, name, pix[:, int(x1):int(x2)], reg)
+                    stats_print(optlist, hduid, name,
+                                pix[:, int(x1)-1:int(x2)], reg)
                     continue
                 # reg = [*,*] #- redundant, but for completeness
                 res = re.match(r"\[*(\*),(\*)\]*", reg)
@@ -134,11 +168,11 @@ def stats_print(optlist, sid, name, buf, reg):
         if "stddev" in  optlist.stats:
             print "{:>7s}".format("stddev"),
         if "min" in  optlist.stats:
-            print "{:>8s}".format("min"),
+            print "{:>7s}".format("min"),
         if "max" in  optlist.stats:
-            print "{:>8s}".format("max"),
+            print "{:>7s}".format("max"),
         if reg:
-            print " {:21s}".format("region"),
+            print " {:20s}".format("region"),
         print #-- newline
 
     if not optlist.noheadings:
@@ -151,11 +185,11 @@ def stats_print(optlist, sid, name, buf, reg):
     if "stddev" in  optlist.stats:
         print "{:>7.1f}".format(np.std(buf)),
     if "min" in  optlist.stats:
-        print "{:>8g}".format(np.min(buf)),
+        print "{:>7g}".format(np.min(buf)),
     if "max" in  optlist.stats:
-        print "{:>8g}".format(np.max(buf)),
+        print "{:>7g}".format(np.max(buf)),
     if reg:
-        print " {:21s}".format(reg),
+        print " {:20s}".format(reg),
     print #-- newline
     ncalls() #-- track call count, acts like static variable
 
@@ -184,6 +218,8 @@ def quicklook(optlist, hdulist):
 
     for hduid in hduids:
         pix = hdulist[hduid].data
+        debugmsg = "shape(pixl)={}".format(np.shape(pix))
+        logging.debug(debugmsg)
         name = hdulist[hduid].name
         hdr = hdulist[hduid].header
         try:
@@ -192,6 +228,8 @@ def quicklook(optlist, hdulist):
             emsg = "KeyError: {}, required for quicklook mode".format(ke)
             logging.error(emsg)
             exit(1)
+        debugmsg = "DATASEC={}".format(dstr)
+        logging.debug(debugmsg)
         res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
                        dstr)
         if res:
@@ -199,19 +237,21 @@ def quicklook(optlist, hdulist):
         naxis1 = int(hdr['NAXIS1'])
         naxis2 = int(hdr['NAXIS2'])
         #sig_region = "[y1:y2,x1:x2]"
-        y1 = max(int(int(datasec[3])/2) - 150, int(datasec[2]))
-        y2 = min(y1+300, int(datasec[3]))
-        #x1 = max(int(int(datasec[0])/2) - 150, int(datasec[0]))
-        x1 = max(int(int(datasec[1]) - int(datasec[0]))/2 - 150,
-                 int(datasec[0]))
-        x2 = min(x1+300, int(datasec[1]))
+        x1 = int(datasec[0]) - 1
+        x2 = int(datasec[1])
+        y1 = int(datasec[2]) - 1
+        y2 = int(datasec[3])
         sig_buf = pix[y1:y2, x1:x2]
+        debugmsg = "sig_buf = pix[{}:{}, {}:{}]".format(y1, y2, x1, x2)
+        logging.debug(debugmsg)
+        debugmsg =  "shape(sig_buf)={}".format(np.shape(sig_buf))
+        logging.debug(debugmsg)
 
         #bias_region = "[y1:y2,x1:x2]"
-        y1 = max(int(int(datasec[3])/2) - 150, int(datasec[2]))
-        y2 = min(y1+300, int(datasec[3]))
-        x1 = int(datasec[1]) + 2
-        x2 = naxis1 - 2
+        x1 = int(datasec[1])
+        x2 = naxis1
+        y1 = int(datasec[2]) - 1
+        y2 = int(datasec[3])
         if y1 > y2 or x1 > x2:
             emsg = "No bias region available for datasec={}"\
                 " with naxis1={}, naxis2={}".\
@@ -219,25 +259,32 @@ def quicklook(optlist, hdulist):
             logging.error(emsg)
             exit(1)
         bias_buf = pix[y1:y2, x1:x2]
+        debugmsg = "bias_buf = pix[{}:{}, {}:{}]".format(y1, y2, x1, x2)
+        logging.debug(debugmsg)
+        debugmsg = "shape(bias_buf)={}".format(np.shape(bias_buf))
+        logging.debug(debugmsg)
         quicklook_print(optlist, hduid, name, sig_buf, bias_buf, expt)
 
 def quicklook_print(optlist, sid, name, sig_buf, bias_buf, expt):
     """perform and print the given statistics quantities
        fields are: mean, bias, signal, noise, adu/s
     """
-    quick_fields = ["mean", "bias", "signal", "noise", "adu/sec"]
+    #quick_fields = ["mean", "bias", "signal", "noise", "adu/sec"]
+    quick_fields = ["mean", "bias", "signal", "noise", "adu/sec", "eper:cte"]
     if not optlist.noheadings and ncalls.counter == 0:
         print "#{:>3s} {:>9s}".format("id", "HDUname"),
         if "mean" in  quick_fields:
-            print "{:>10s}".format("[adu] mean"),
+            print "{:>8s}".format("median"),
         if "bias" in  quick_fields:
-            print "{:>9s}".format("bias"),
+            print "{:>8s}".format("bias"),
         if "signal" in  quick_fields:
             print "{:>9s}".format("signal"),
         if "noise" in  quick_fields:
             print "{:>8s}".format("noise"),
         if "adu/sec" in  quick_fields and expt > 0:
             print "{:>8s}".format("adu/sec"),
+        if "eper:cte" in  quick_fields:
+            print "{:>10s}".format("eper:cte"),
         print #-- newline
 
     if not optlist.noheadings:
@@ -245,17 +292,37 @@ def quicklook_print(optlist, sid, name, sig_buf, bias_buf, expt):
 
     if "mean" in  quick_fields:
         sig_mean = np.median(sig_buf)
-        print "{:>10g}".format(sig_mean),
+        print "{:>8g}".format(sig_mean),
     if "bias" in  quick_fields:
         bias_mean = np.median(bias_buf)
-        print "{:>9g}".format(bias_mean),
+        print "{:>8g}".format(bias_mean),
     if "signal" in  quick_fields:
         signal = sig_mean - bias_mean
         print "{:>9g}".format(signal),
     if "noise" in  quick_fields:
-        print "{:>8.2f}".format(np.std(bias_buf)),
+        (nrows, ncols) = np.shape(sig_buf)
+        print "{:>8.2f}".format(np.std(
+            bias_buf[int(nrows/2-100):int(nrows/2+100), 2:ncols-2])),
     if "adu/sec" in  quick_fields and expt > 0:
-        print "{:>8.2f}".format(signal/expt),
+        print "{:>8.2f}".format(float(signal)/expt),
+    if "eper:cte" in  quick_fields:
+        (nrows, ncols) = np.shape(sig_buf)
+        y1 = int(nrows/2-100)
+        y2 = int(nrows/2+100)
+        x0 = ncols-1
+        debugmsg = "s_n=sig_buf[{}:{},{}]".format(y1,y2,x0)
+        logging.debug(debugmsg)
+        s_n = sig_buf[y1:y2, x0]
+        l_n = np.mean(s_n) - bias_mean
+        y1 = int(nrows/2-100)
+        y2 = int(nrows/2+100)
+        x0 = 0
+        debugmsg = "b_n=sig_buf[{}:{},{}]".format(y1,y2,x0)
+        logging.debug(debugmsg)
+        b_n = bias_buf[y1:y2, x0]
+        l_nn = np.mean(b_n) - bias_mean
+        eper = 1 - (l_nn / (ncols * l_n))
+        print "{:>10.6g}".format(eper),
     print #-- newline
     ncalls() #-- track call count, acts like static variable
 
