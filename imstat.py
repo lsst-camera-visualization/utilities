@@ -189,7 +189,7 @@ def stats_print(optlist, sid, name, buf, reg):
     if "median" in  optlist.stats:
         print "{:>9g}".format(np.median(buf)),
     if "stddev" in  optlist.stats:
-        print "{:>7.1f}".format(np.std(buf)),
+        print "{:>7.1g}".format(np.std(buf)),
     if "min" in  optlist.stats:
         print "{:>7g}".format(np.min(buf)),
     if "max" in  optlist.stats:
@@ -224,8 +224,9 @@ def quicklook(optlist, hdulist):
 
     for hduid in hduids:
         pix = hdulist[hduid].data
-        debugmsg = "shape(pixl)={}".format(np.shape(pix))
-        logging.debug(debugmsg)
+        #debugmsg = "shape(pixl)={}".format(np.shape(pix))
+        #logging.debug(debugmsg)
+        logging.debug("shape(pixl)={}".format(np.shape(pix)))
         name = hdulist[hduid].name
         hdr = hdulist[hduid].header
         try:
