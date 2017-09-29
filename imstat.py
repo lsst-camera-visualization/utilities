@@ -329,8 +329,9 @@ def quicklook_print(optlist, sid, name, sig_buf, bias_buf, expt):
         logging.debug(debugmsg)
         b_n = bias_buf[y1:y2, x0:x1]
         l_nn = np.mean(b_n) - bias_mean
-        eper = 1 - (l_nn / (ncols * l_n))
-        print "{:>10.6g}".format(eper),
+        if l_n > 0.0:
+            eper = 1 - (l_nn / (ncols * l_n))
+            print "{:>10.6g}".format(eper),
     print #-- newline
     ncalls() #-- track call count, acts like static variable
 
