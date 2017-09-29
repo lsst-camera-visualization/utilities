@@ -325,7 +325,7 @@ def quicklook_print(optlist, sid, name, sig_buf, bias_buf, expt):
         y2 = int(nrows/2+100)
         x0 = 0
         x1 = 2
-        debugmsg = "b_n=bias_buf[{}:{},{}]".format(y1,y2,x0,x1)
+        debugmsg = "b_n=bias_buf[{}:{},{}:{}]".format(y1,y2,x0,x1)
         logging.debug(debugmsg)
         b_n = bias_buf[y1:y2, x0:x1]
         l_nn = np.mean(b_n) - bias_mean
