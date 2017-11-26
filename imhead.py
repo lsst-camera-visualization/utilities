@@ -10,7 +10,8 @@ def parse_args():
     """handle command line"""
     parser = argparse.ArgumentParser(
         description="Print headers (Primary+Image)")
-    parser.add_argument("fitsfile", help="input fits file")
+    parser.add_argument("fitsfile", nargs='+',
+                        metavar="file", help="input fits file(s)")
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
     parser.add_argument("--hduname",
@@ -24,19 +25,28 @@ def parse_args():
     return parser.parse_args()
     # return opts
 
+def main():
+    optlist = parse_args()
+    # begin processing -- loop over files
+    for ffile in optlist.fitsfile:
+        try:
+            hdulist = fits.open(ffile)
+        except IOError as ioerr:
+            emsg = "IOError: {}".format(ioerr)
+            logging.error(emsg)
+            exit(1)
+        if optlist.info: # just print the image info and exit
+            hdulist.info()
+        else:
+            header_print(optlist, hdulist)
 
-def header_print(opts):
+
+def header_print(opts, hdulist):
     """print the headers according to the options
     """
     seglist = {}      # dict to hold segment name, index as k,v
     otherlist = {}    # dict to hold non-image HDU's (except for primary)
-    # opts = parse_args()
-    hdulist = fits.open(opts.fitsfile)
-    # just print the image info with indexes, names, sizes
-    if opts.info:
-        hdulist.info()
-    # print single hdu by name
-    elif opts.hduname:
+    if opts.hduname:
         index = hdulist.index_of(opts.hduname)
         hdu = hdulist[index]
         print "#--------{}---------".format(opts.hduname)
@@ -89,5 +99,4 @@ def header_print(opts):
     hdulist.close()
 
 if __name__ == '__main__':
-    optlist = parse_args()
-    header_print(optlist)
+    main()

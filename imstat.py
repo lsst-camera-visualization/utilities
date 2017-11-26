@@ -15,7 +15,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Calculate statistical quantities for image")
     parser.add_argument("fitsfile", nargs='+',
-                        metavar="file", help="input fits file")
+                        metavar="file", help="input fits file(s)")
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
     parser.add_argument("--debug", action='store_true',
@@ -58,12 +58,8 @@ def main():
         if optlist.info: # just print the image info and exit
             hdulist.info()
             exit(0)
-        if not optlist.noheadings: #- print filename
+        elif not optlist.noheadings: #- print filename
             print "#"
-            #- save this for later review
-            #print "# {}".format(hdulist[0].header['filename'])
-            #print "fitsfile={}".format(ffile)
-            #print os.path.basename(ffile)
             print "# {}".format(os.path.basename(ffile))
         if optlist.quicklook:
             quicklook(optlist, hdulist)
@@ -223,10 +219,9 @@ def quicklook(optlist, hdulist):
                 hduids.append(hdulist.index_of(hdu.name))
 
     for hduid in hduids:
+        #- get header details to extract signal, bias regions
         pix = hdulist[hduid].data
-        #debugmsg = "shape(pixl)={}".format(np.shape(pix))
-        #logging.debug(debugmsg)
-        logging.debug("shape(pixl)={}".format(np.shape(pix)))
+        logging.debug("shape(pix)={}".format(np.shape(pix)))
         name = hdulist[hduid].name
         hdr = hdulist[hduid].header
         try:
@@ -241,9 +236,13 @@ def quicklook(optlist, hdulist):
                        dstr)
         if res:
             datasec = res.groups()
+        else:
+            emsg = "DATASEC:{} parsing failed".format(dstr)
+            logging.error(emsg)
+            exit(1)
         naxis1 = int(hdr['NAXIS1'])
         naxis2 = int(hdr['NAXIS2'])
-        #sig_region = "[y1:y2,x1:x2]"
+        #- define region to measure signal level
         x1 = int(datasec[0]) - 1
         x2 = int(datasec[1])
         y1 = int(datasec[2]) - 1
@@ -254,7 +253,7 @@ def quicklook(optlist, hdulist):
         debugmsg =  "shape(sig_buf)={}".format(np.shape(sig_buf))
         logging.debug(debugmsg)
 
-        #bias_region = "[y1:y2,x1:x2]"
+        #Serial bias_region = "[y1:y2,x1:x2]"
         x1 = int(datasec[1])
         x2 = naxis1
         y1 = int(datasec[2]) - 1
@@ -270,28 +269,50 @@ def quicklook(optlist, hdulist):
         logging.debug(debugmsg)
         debugmsg = "shape(bias_buf)={}".format(np.shape(bias_buf))
         logging.debug(debugmsg)
-        quicklook_print(optlist, hduid, name, sig_buf, bias_buf, expt)
 
-def quicklook_print(optlist, sid, name, sig_buf, bias_buf, expt):
+        #parallel bias_region = "[y1:y2,x1:x2]"
+        x1 = int(datasec[0]) - 1
+        x2 = int(datasec[1])
+        y1 = int(datasec[3])
+        y2 = naxis2
+        if y1 > y2 or x1 > x2:
+            emsg = "No bias region available for datasec={}"\
+                " with naxis1={}, naxis2={}".\
+                format(datasec, naxis1, naxis2)
+            logging.error(emsg)
+            exit(1)
+        p_bias_buf = pix[y1:y2, x1:x2]
+        debugmsg = "p_bias_buf = pix[{}:{}, {}:{}]".format(y1, y2, x1, x2)
+        logging.debug(debugmsg)
+        debugmsg = "shape(p_bias_buf)={}".format(np.shape(p_bias_buf))
+        logging.debug(debugmsg)
+        quicklook_print(optlist, hduid, name, sig_buf,
+                        bias_buf, p_bias_buf, expt)
+
+def quicklook_print(optlist, sid, name, sig_buf,
+                    bias_buf, p_bias_buf, expt):
     """perform and print the given statistics quantities
        fields are: mean, bias, signal, noise, adu/s
     """
     #quick_fields = ["mean", "bias", "signal", "noise", "adu/sec"]
-    quick_fields = ["mean", "bias", "signal", "noise", "adu/sec", "eper:cte"]
+    quick_fields = ["mean", "bias", "signal",
+                    "noise", "adu/sec", "eper:s-cte", "eper:p-cte"]
     if not optlist.noheadings and ncalls.counter == 0:
         print "#{:>3s} {:>9s}".format("id", "HDUname"),
         if "mean" in  quick_fields:
-            print "{:>8s}".format("median"),
+            print " {:>6s}".format("median"),
         if "bias" in  quick_fields:
-            print "{:>8s}".format("bias"),
+            print " {:>5s}".format("bias"),
         if "signal" in  quick_fields:
-            print "{:>9s}".format("signal"),
+            print " {:>6s}".format("signal"),
         if "noise" in  quick_fields:
-            print "{:>8s}".format("noise"),
+            print " {:>7s}".format("noise"),
         if "adu/sec" in  quick_fields and expt > 0:
             print "{:>8s}".format("adu/sec"),
-        if "eper:cte" in  quick_fields:
-            print "{:>10s}".format("eper:cte"),
+        if "eper:s-cte" in  quick_fields:
+            print "{:>9s}".format("s-cte"),
+        if "eper:p-cte" in  quick_fields:
+            print "{:>9s}".format("p-cte"),
         print #-- newline
 
     if not optlist.noheadings:
@@ -299,39 +320,100 @@ def quicklook_print(optlist, sid, name, sig_buf, bias_buf, expt):
 
     if "mean" in  quick_fields:
         sig_mean = np.median(sig_buf)
-        print "{:>8g}".format(sig_mean),
+        print " {:>6g}".format(sig_mean),
     if "bias" in  quick_fields:
         bias_mean = np.median(bias_buf)
-        print "{:>8g}".format(bias_mean),
+        print " {:>5g}".format(bias_mean),
     if "signal" in  quick_fields:
         signal = sig_mean - bias_mean
-        print "{:>9g}".format(signal),
+        print " {:>6g}".format(signal),
     if "noise" in  quick_fields:
-        (nrows, ncols) = np.shape(sig_buf)
-        print "{:>8.2f}".format(np.std(
-            bias_buf[int(nrows/2-100):int(nrows/2+100), 2:ncols-2])),
+        (nrows, ncols) = np.shape(bias_buf)
+        print " {:>7.4g}".format(np.std(
+            bias_buf[int(nrows/2-nrows/20):int(nrows/2+nrows/20), 3:ncols-2])),
     if "adu/sec" in  quick_fields and expt > 0:
         print "{:>8.2f}".format(float(signal)/expt),
-    if "eper:cte" in  quick_fields:
-        (nrows, ncols) = np.shape(sig_buf)
-        y1 = int(nrows/2-100)
-        y2 = int(nrows/2+100)
-        x0 = ncols-1
-        debugmsg = "s_n=sig_buf[{}:{},{}]".format(y1,y2,x0)
+    if "eper:s-cte" in  quick_fields:
+        debugmsg = "s-cte------------------"
         logging.debug(debugmsg)
-        s_n = sig_buf[y1:y2, x0]
+        (nrows, ncols) = np.shape(sig_buf)
+        nsig_cols = ncols
+        #- define region to measure signal used in cte calc
+        y1 = int(nrows/2-nrows/10)
+        y2 = int(nrows/2+nrows/10)
+        x0 = ncols-ncols/20
+        x1 = ncols-1
+        debugmsg = "s_n=sig_buf[{}:{},{}:{}]".format(y1,y2,x0,x1)
+        logging.debug(debugmsg)
+        s_n = sig_buf[y1:y2, x0:x1]
+        (nrows, ncols) = np.shape(bias_buf)
+        l_ncols = 3
+        bias_mean = np.mean(bias_buf[y1:y2,l_ncols:ncols])
+        debugmsg = "using bias_buf[{}:{},{}:{}]".format(y1,y2,l_ncols,ncols)
+        logging.debug(debugmsg)
         l_n = np.mean(s_n) - bias_mean
-        y1 = int(nrows/2-100)
-        y2 = int(nrows/2+100)
+        debugmsg = "l_n={:>10.6g}".format(l_n)
+        logging.debug(debugmsg)
+        y1 = int(nrows/2-nrows/10)
+        y2 = int(nrows/2+nrows/10)
         x0 = 0
-        x1 = 2
+        x1 = l_ncols
         debugmsg = "b_n=bias_buf[{}:{},{}:{}]".format(y1,y2,x0,x1)
         logging.debug(debugmsg)
         b_n = bias_buf[y1:y2, x0:x1]
-        l_nn = np.mean(b_n) - bias_mean
+        l_nn = np.mean((b_n - bias_mean).sum(axis=1))
+        debugmsg = "l_nn={:>10.6g}".format(l_nn)
+        logging.debug(debugmsg)
         if l_n > 0.0:
-            eper = 1 - (l_nn / (ncols * l_n))
-            print "{:>10.6g}".format(eper),
+            eper = 1 - (l_nn / (nsig_cols * l_n))
+            print " {:>8.6g}".format(eper),
+    if "eper:p-cte" in  quick_fields:
+        debugmsg = "p-cte------------------"
+        logging.debug(debugmsg)
+        (nrows, ncols) = np.shape(p_bias_buf)
+        l_nrows = 3 # number of overscan rows used to determing cte
+        #- define region to measure bias used in cte calc
+        x1 = int(ncols/2-ncols/10)
+        x2 = int(ncols/2+ncols/10)
+        y0 = l_nrows
+        y1 = nrows
+        p_bias_mean = np.mean(p_bias_buf[y0:y1,x1:x2])
+        debugmsg = "p_bias_mean=mean(p_bias_buf[{}:{},{}:{}])".format(y0,y1,x1,x2)
+        logging.debug(debugmsg)
+        debugmsg = "p_bias_mean={:>10.6g}".format(p_bias_mean)
+        logging.debug(debugmsg)
+        #- define region to measure signal used in cte calc
+        (nrows, ncols) = np.shape(sig_buf)
+        nsig_rows = nrows
+        x1 = int(ncols/2-ncols/10)
+        x2 = int(ncols/2+ncols/10)
+        y0 = nrows-100
+        y1 = nrows-1
+        debugmsg = "s_n=sig_buf[{}:{},{}:{}]".format(y0,y1,x1,x2)
+        logging.debug(debugmsg)
+        s_n = sig_buf[y0:y1, x1:x2]
+        l_n = np.mean(s_n) - p_bias_mean
+        debugmsg = "l_n={:>10.6g}".format(l_n)
+        logging.debug(debugmsg)
+        x1 = int(ncols/2-ncols/10)
+        x2 = int(ncols/2+ncols/10)
+        y0 = 0
+        y1 = l_nrows
+        debugmsg = "shape(p_bias_buf)={}".format(np.shape(p_bias_buf))
+        logging.debug(debugmsg)
+        debugmsg = "b_n=p_bias_buf[{}:{},{}:{}]".format(x1,x2,y0,y1)
+        logging.debug(debugmsg)
+        b_n = p_bias_buf[y0:y1, x1:x2]
+        debugmsg = "shape(b_n)={}".format(np.shape(b_n))
+        logging.debug(debugmsg)
+        #l_nn = np.median(b_n) - p_bias_mean
+        l_nn = np.mean((b_n - bias_mean).sum(axis=0))
+        debugmsg = "l_nn={:>10.6g}".format(l_nn)
+        logging.debug(debugmsg)
+        (nrows, ncols) = np.shape(sig_buf)
+        if l_n > 0.0:
+            eper = 1 - (l_nn / (nrows * l_n))
+            print " {:>8.6g}".format(eper),
     print #-- newline
     ncalls() #-- track call count, acts like static variable
 
