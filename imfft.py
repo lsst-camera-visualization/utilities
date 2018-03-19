@@ -51,14 +51,15 @@ def main():
     else:
         logging.basicConfig(format='%(levelname)s: %(message)s',
                             level=logging.INFO)
-        if optlist.scaling == 'density':
-            window='boxcar'
-        else:
-            window='flattop'
+    if optlist.scaling == 'density':
+        window='boxcar'
+    else:
+        window='flattop'
 
     #- Open files
     fileno = 0
-    hduids = [1]
+    hduids = []
+    #- loop over files
     for ffile in optlist.fitsfile:
         try:
             hdulist = fits.open(ffile)
@@ -66,9 +67,15 @@ def main():
             emsg = "IOError: {}".format(ioerr)
             logging.error(emsg)
             exit(1)
-	if optlist.hduindex:
-	    hduids = optlist.hduindex
+        if optlist.hduindex:
+            hduids = optlist.hduindex
+        else: #- all segments
+            for hdu in hdulist:
+                if isinstance(hdu, fits.ImageHDU):
+                    hduids.append(hdulist.index_of(hdu.name))
 
+        #- loop over hdu's
+        hducnt = 0
         for hduid in hduids:
             hdr = hdulist[hduid].header
             try:
@@ -77,73 +84,84 @@ def main():
                 emsg = "KeyError: {}, required".format(ke)
                 logging.error(emsg)
                 exit(1)
-	    debugmsg = "DATASEC={}".format(dstr)
-	    logging.debug(debugmsg)
-	    res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
-			   dstr)
-	    if res:
-		datasec = res.groups()
-	    else:
-		emsg = "DATASEC:{} parsing failed".format(dstr)
-		logging.error(emsg)
-		exit(1)
+            debugmsg = "DATASEC={}".format(dstr)
+            logging.debug(debugmsg)
+            res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
+                dstr)
+            if res:
+                datasec = res.groups()
+            else:
+                emsg = "DATASEC:{} parsing failed".format(dstr)
+                logging.error(emsg)
+                exit(1)
 
-	    naxis1 = int(hdr['NAXIS1'])
-	    naxis2 = int(hdr['NAXIS2'])
-	    #- define region to measure signal level
-	    x1 = int(datasec[0]) - 1
-	    x2 = int(datasec[1])
-	    y1 = int(datasec[2]) - 1
-	    y2 = int(datasec[3])
+            naxis1 = int(hdr['NAXIS1'])
+            naxis2 = int(hdr['NAXIS2'])
+            #- define region to measure signal level
+            x1 = int(datasec[0]) - 1
+            x2 = int(datasec[1])
+            y1 = int(datasec[2]) - 1
+            y2 = int(datasec[3])
 
-	    naxis1 = hdr['NAXIS1']
-	    naxis2 = hdr['NAXIS2']
-	    stddev = hdr['STDVBIAS']
-	    pix = hdulist[hduid].data
-	    fs = 1.0/(optlist.rt*1e-9)
-	    #- measure the size needed
-	    arr = pix[optlist.row, x1:x2]
-	    x, p = signal.periodogram(arr, fs, window, scaling=optlist.scaling )
-	    flen = x.size
-	    plen = p.size
-	    if flen != plen:
-		emsg = "flen({}) != plen({})".format(flen, plen)
-		emsg = "DATASEC:{} parsing failed".format(dstr)
-		logging.error(emsg)
-		exit(1)
-	    f = np.empty((optlist.nrows, flen))
-	    Pxx_den = np.empty((optlist.nrows, plen))
-	    for rr in range(0, optlist.nrows):
-		arr = pix[rr + optlist.row, x1:x2]
-		x, p = signal.periodogram(arr, fs,
-					  window, scaling=optlist.scaling )
-		f[rr] = x
-		Pxx_den[rr] = p
+            naxis1 = hdr['NAXIS1']
+            naxis2 = hdr['NAXIS2']
+            stddev = hdr['STDVBIAS']
+            pix = hdulist[hduid].data
+            fs = 1.0/(optlist.rt*1e-9)
+            #- measure the size needed
+            arr = pix[optlist.row, x1:x2]
+            x, p = signal.periodogram(arr, fs, window, scaling=optlist.scaling )
+            flen = x.size
+            plen = p.size
+            if flen != plen:
+                emsg = "flen({}) != plen({})".format(flen, plen)
+                emsg = "DATASEC:{} parsing failed".format(dstr)
+                logging.error(emsg)
+                exit(1)
+            f = np.empty((optlist.nrows, flen))
+            Pxx_den = np.empty((optlist.nrows, plen))
+            for rr in range(0, optlist.nrows):
+                arr = pix[rr + optlist.row, x1:x2]
+                x, p = signal.periodogram(arr, fs,
+                                        window, scaling=optlist.scaling )
+                f[rr] = x
+                Pxx_den[rr] = p
 
-	    f_avg = np.average(f, axis=0)
-	    Pxx_den_avg = np.average(Pxx_den, axis=0)
-	    if fileno == 0:
-		pmin = Pxx_den_avg.min()
-		pmax = Pxx_den_avg.max()
-		pavg = 0.5*(pmin + pmax)
-	    else:
-		if pmin > Pxx_den_avg.min():
-		    pmin = Pxx_den_avg.min()
-		if pmax < Pxx_den_avg.max():
-		    pmax = Pxx_den_avg.max()
+            f_avg = np.average(f, axis=0)
+            Pxx_den_avg = np.average(Pxx_den, axis=0)
+            if (fileno + hducnt) == 0:
+                pmin = Pxx_den_avg.min()
+                pmax = Pxx_den_avg.max()
+                pavg = 0.5*(pmin + pmax)
+                debugmsg = "pmin={:>g}".format(pmin)
+                logging.debug(debugmsg)
+                debugmsg = "pmax={:>g}".format(pmax)
+                logging.debug(debugmsg)
+            else:
+                if pmin > Pxx_den_avg.min():
+                    pmin = Pxx_den_avg.min()
+                    debugmsg = "pmin={:>g}".format(pmin)
+                    logging.debug(debugmsg)
+                if pmax < Pxx_den_avg.max():
+                    pmax = Pxx_den_avg.max()
+                    debugmsg = "pmax={:>g}".format(pmax)
+                    logging.debug(debugmsg)
 
-	plt.semilogy(f_avg, Pxx_den_avg,
-	     label="{}:{:>02d}:{:>7.2f}".format(fileno, hduid, stddev))
-	fileno += 1
-	#
+            plt.semilogy(f_avg, Pxx_den_avg,
+                label="{}:{:>02d}:{:>7.2f}".format(fileno, hduid, stddev))
+            hducnt += 1
+            #- end loop over hdui's
+
+    fileno += 1
+    #
     plt.ylim([0.8*pmin, 1.2*pmax])
     plt.xlabel('freqquency [Hz]')
     if optlist.scaling == 'density':
-	plt.ylabel('PSD [V**2/Hz]')
+        plt.ylabel('PSD [V**2/Hz]')
     else:
-	plt.ylabel('Linear spectrum [V RMS]')
+        plt.ylabel('Linear spectrum [V RMS]')
     plt.grid(True)
-    plt.legend(fontsize='x-small',title='File:HDUi RN')
+    plt.legend(fontsize='xx-small',title='File:HDUi RN')
     plt.show()
 
 
