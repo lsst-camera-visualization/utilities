@@ -14,6 +14,7 @@ import os.path
 from astropy.io import fits
 import numpy as np
 from scipy import signal
+from astropy.stats import sigma_clip
 import matplotlib.pyplot as plt
 
 def parse_args():
@@ -37,6 +38,8 @@ def parse_args():
                         metavar='idx', help="process HDU list by ids")
     parser.add_argument("--scaling", choices=['density', 'spectrum'],
                         default='density', help="")
+    parser.add_argument("--clip", action='store_true',
+                        help="apply sigma (3) clip to rows used")
     parser.add_argument("--debug", action='store_true',
                         help="print additional debugging messages")
     return parser.parse_args()
@@ -122,8 +125,14 @@ def main():
             Pxx_den = np.empty((optlist.nrows, plen))
             for rr in range(0, optlist.nrows):
                 arr = pix[rr + optlist.row, x1:x2]
-                x, p = signal.periodogram(arr, fs,
-                                        window, scaling=optlist.scaling )
+                if optlist.clip:
+                    amed = np.median(arr)
+                    farr = sigma_clip(arr)
+                    x, p = signal.periodogram(farr.filled(amed), fs,
+                                  window, scaling=optlist.scaling )
+                else:
+                    x, p = signal.periodogram(arr, fs,
+                                  window, scaling=optlist.scaling )
                 f[rr] = x
                 Pxx_den[rr] = p
 
