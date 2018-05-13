@@ -35,6 +35,8 @@ def parse_args():
                         help="select: mean median stddev min max")
     parser.add_argument("--quicklook", action='store_true',
                         help="estimate signal, noise, counts/sec in adus")
+    parser.add_argument("--tearing", action='store_true',
+                        help="add tearing metric to quicklook output")
     return parser.parse_args()
 
 def main():
@@ -297,6 +299,8 @@ def quicklook_print(optlist, sid, name, sig_buf,
     #quick_fields = ["mean", "bias", "signal", "noise", "adu/sec"]
     quick_fields = ["mean", "bias", "signal",
                     "noise", "adu/sec", "eper:s-cte", "eper:p-cte"]
+    if optlist.tearing: 
+        quick_fields.append("tearing") 
     if not optlist.noheadings and ncalls.counter == 0:
         print "#{:>3s} {:>9s}".format("id", "HDUname"),
         if "mean" in  quick_fields:
@@ -313,6 +317,8 @@ def quicklook_print(optlist, sid, name, sig_buf,
             print "{:>9s}".format("s-cte"),
         if "eper:p-cte" in  quick_fields:
             print "{:>9s}".format("p-cte"),
+        if "tearing" in  quick_fields:
+            print "{:>15s}".format("tearing: L  R"),
         print #-- newline
 
     if not optlist.noheadings:
@@ -414,6 +420,27 @@ def quicklook_print(optlist, sid, name, sig_buf,
         if l_n > 0.0:
             eper = 1 - (l_nn / (nrows * l_n))
             print " {:>8.6g}".format(eper),
+    if "tearing" in  quick_fields:
+        debugmsg = "tearing check----------"
+        logging.debug(debugmsg)
+	#- column-1 into an array arr1
+	#- column-2..N into 2nd array with dimension N-1 x Ncols arr2
+	#- take median of 2nd array to make 1-D: arr3
+	#- find stddev of arr3 (using a sigmaclipped version)
+	#- form (arr3 - arr1)/stddev as arr4
+	#- find the first value of index "j" in arr4 where arr4[j] < 1.0
+	#- report out (len(arr4-j)/len(arr4) to 1 digit as tearing where
+        #- this represents the fraction of the array less than 1.0
+        #- left side
+        arr3 = np.median(sig_buf[:,2:40], axis=1)
+        arr4 = (arr3 - sig_buf[:,0])/np.std(arr3)
+        tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
+        print "{:>4.1f}".format(tm),
+        #- right side
+        arr3 = np.median(sig_buf[:,-40:-2], axis=1)
+        arr4 = (arr3 - sig_buf[:,-0])/np.std(arr3)
+        tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
+        print "{:>4.1f}".format(tm),
     print #-- newline
     ncalls() #-- track call count, acts like static variable
 
