@@ -466,13 +466,11 @@ def quicklook_print(optlist, sid, name, sig_buf,
         arr1 = sig_buf[-nrows/10:-1,:] #- use top 10% of array
         debugmsg = "using subarray [{}:{},:]".format(-nrows/10,-1)
         logging.debug(debugmsg)
-        #arr1 = sig_buf
         arr2 = arr1.flatten('F') #- flatten to 1d in column order
         avg2, med2, std2 = stats.sigma_clipped_stats(arr2)
         debugmsg = "clipped stats: avg:{:>.3g} med:{} stdev:{:>.3g}".format(avg2, med2, std2)
         logging.debug(debugmsg)
         arr3 = (arr2 - avg2)/std2
-        #print arr3
         ndipole = 0
         for i in range(0, np.size(arr3) - 1):
             if (np.sign(arr3[i+1] * arr3[i]) == -1) and abs(arr3[i+1] - arr3[i]) > 5:
@@ -480,7 +478,6 @@ def quicklook_print(optlist, sid, name, sig_buf,
         debugmsg = "dipole count = {}".format(ndipole)
         logging.debug(debugmsg)
         print "{:>8.2f}".format(100.0*float(2*ndipole)/(np.size(arr1)))
-
     print #-- newline
     ncalls() #-- track call count, acts like static variable
 
