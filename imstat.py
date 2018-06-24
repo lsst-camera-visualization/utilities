@@ -458,7 +458,8 @@ def quicklook_print(optlist, sid, name, sig_buf,
     #- find sigma-clipped mean, median and stdev
     #- subtract mean from array
     #- divide the array by sigma
-    #- go through array finding pixel pairs where |A(n)-A(n+1)| > 6
+    #- go through array finding pixel pairs of differing sign
+    #- and where |A(n)-A(n+1)| > 6
     #- add one to counter each time such a pair is found
     #-
         (nrows, ncols) = np.shape(sig_buf)
@@ -474,7 +475,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         #print arr3
         ndipole = 0
         for i in range(0, np.size(arr3) - 1):
-            if (np.sign(arr3[i+1] - arr3[i]) == -1) and abs(arr3[i+1] - arr3[i]) > 5:
+            if (np.sign(arr3[i+1] * arr3[i]) == -1) and abs(arr3[i+1] - arr3[i]) > 5:
                 ndipole += 1
         debugmsg = "dipole count = {}".format(ndipole)
         logging.debug(debugmsg)
