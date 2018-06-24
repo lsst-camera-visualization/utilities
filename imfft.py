@@ -142,9 +142,9 @@ def main():
                 pmin = Pxx_den_avg.min()
                 pmax = Pxx_den_avg.max()
                 pavg = 0.5*(pmin + pmax)
-                debugmsg = "pmin={:>g}".format(pmin)
+                debugmsg = "pmin0={:>g}".format(pmin)
                 logging.debug(debugmsg)
-                debugmsg = "pmax={:>g}".format(pmax)
+                debugmsg = "pmax0={:>g}".format(pmax)
                 logging.debug(debugmsg)
             else:
                 if pmin > Pxx_den_avg.min():
@@ -160,8 +160,8 @@ def main():
                 label="{}:{:>02d}:{:>7.2f}".format(fileno, hduid, stddev))
             hducnt += 1
             #- end loop over hdui's
-
-    fileno += 1
+        fileno += 1
+        #- end loop over files
     #
     plt.ylim([0.8*pmin, 1.2*pmax])
     plt.xlabel('freqquency [Hz]')
