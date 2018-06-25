@@ -131,12 +131,12 @@ def columnplot(optlist, hdulist):
             logging.debug("calling column_plot() {}[{}]".format(name, reg))
             column_plot(optlist, hduid, name,
                                            hdulist[hduid].data, slicespec)
-        plt.xlabel('column')
-        plt.ylabel('adu')
-        plt.grid(True)
-        plt.title("{}".format(fname))
-        plt.legend(fontsize='x-small',title='HDUi:Region ')
-        plt.show()
+    plt.xlabel('column')
+    plt.ylabel('adu')
+    plt.grid(True)
+    plt.title("{}".format(fname))
+    plt.legend(fontsize='x-small',title='HDUi:Region ')
+    plt.show()
 
 def column_plot(optlist, hduid, name, hdudata, slicespec):
     """
