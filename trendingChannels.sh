@@ -2,6 +2,9 @@
 #
 # script to dump out trending database channels for a given subsystem
 #----------------------------
+XMLLINT=$(which xmllint)
+WGET=$(which wget)
+GAWK=$(which gawk)
 
 # Print out error message when called commandline error
 function usage {
@@ -20,10 +23,18 @@ if [ $# -ne 1 ]; then
 fi
 ssname=$1
 
-url="http://lsst-mcm.slac.stanford.edu:8080/rest/data/dataserver/listchannels"
-/usr/bin/wget --quiet -O - ${url} |\
-/lnfs/lsst/dh/software/centos7-gcc48/anaconda/py-2.7-4.3.14/bin/xmllint --format - |\
-/usr/bin/gawk '\
+if $(hostname -I | grep -q 134.79) ; then
+    trending_server=lsst-mcm.slac.stanford.edu
+else
+    #- expect to have an ssh tunnel set up
+    trending_server=localhost
+fi
+BASE_URL="http://${trending_server}:8080/rest/data/dataserver"
+
+url="${BASE_URL}/listchannels"
+${WGET} --quiet -O - ${url} |\
+${XMLLINT} --format - |\
+${GAWK} '\
    BEGIN {println=0;channelstart=0};\
    /<datachannel>/ {channelstart=1; next;};\
    /<path>/ {next;};\
@@ -32,5 +43,5 @@ url="http://lsst-mcm.slac.stanford.edu:8080/rest/data/dataserver/listchannels"
    /<pathelement>/ {if(println) {gsub("<pathelement>","");gsub("</pathelement>","");print $0;}};\
    /<id>/ {if(println==1) {gsub("<id>","");gsub("</id>","");print $0}};\
    /<\/datachannel>/ {channelstart=0; println=0;};' |\
-/usr/bin/gawk '\
+${GAWK} '\
    /^$/ {printf("\n");next;}; {printf("%s ",$0);};'

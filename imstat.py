@@ -461,7 +461,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
     #- go through array finding pixel pairs of differing sign
     #- and where |A(n)-A(n+1)| > 6
     #- add one to counter each time such a pair is found
-    #-
+    #- print out the % of pixels occupied by dipoles
         (nrows, ncols) = np.shape(sig_buf)
         arr1 = sig_buf[-nrows/10:-1,:] #- use top 10% of array
         debugmsg = "using subarray [{}:{},:]".format(-nrows/10,-1)

@@ -9,6 +9,7 @@ import logging
 import os.path
 from astropy.io import fits
 from astropy import stats
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -34,19 +35,27 @@ def parse_args():
                         help="region fmt: \"x1:x2,y1:y2\",")
     pgroup.add_argument("--column", nargs='*', metavar='reg',
                         help="region fmt: \"x1:x2,y1:y2\",")
-    parser.add_argument("--ltype", default="median",
-                        help="line plot type: average|(median)")
-    parser.add_argument("--ctype", default="median",
-                        help="column plot type: average|(median)")
+    parser.add_argument("--ltype", choices=['median','mean','clipped'],
+                        default='median', help="line plot type")
+    parser.add_argument("--ctype", choices=['median','mean','clipped'],
+                        help="line plot type")
+    parser.add_argument("--offset", choices=['mean', 'delta'],
+                        help="plot diff from mean or diff w/offset")
     return parser.parse_args()
 
 #define a region for the plot to act on
+#
 #specify what type of plots to make:
-#    -line [average|median|unroll]
-#    -column [average|median|unroll]
+#    -line [average|median|clipped]
+#    -column [average|median|clipped]
 #    -histogram [bin parameters?]
 #    -surface [surface params, view angles, scaling]
 #    -scatter [hmm?]
+#
+#style issues
+#    -logy, -logx
+#    -overlay hdu level, file level, all levels???
+#    -offset [(5%),offsetval]
 
 
 def main():
@@ -59,9 +68,25 @@ def main():
         logging.basicConfig(format='%(levelname)s: %(message)s',
                             level=logging.INFO)
     ncalls.counter = 0
+
+    # layout of plot view
+    nfiles = len(optlist.fitsfile)
+    npcols = int(math.ceil(math.sqrt(nfiles)))
+    nprows = int(math.ceil(float(nfiles)/npcols))
+    logging.debug("subplots layout for nfiles={} is nprows={} x npcols={}".format(nfiles, nprows, npcols))
+    fig, axes = plt.subplots(nprows, npcols, sharey=True)
+    fcnt = 0
     # begin processing -- loop over files
     for ffile in optlist.fitsfile:
         logging.debug("processing {}".format(ffile))
+        row = fcnt / npcols
+        col = fcnt % npcols
+        logging.debug("row={} col={}".format(row, col))
+        logging.debug("shape(axes)={}".format(np.shape(axes)))
+        if np.shape(axes) == ():
+            ax = axes
+        else:
+            ax = axes.flatten()[row * npcols + col]
         try:
             hdulist = fits.open(ffile)
         except IOError as ioerr:
@@ -72,12 +97,25 @@ def main():
             hdulist.info()
             exit(0)
         if optlist.line is not None:
-            lineplot(optlist, hdulist)
+            lineplot(optlist, hdulist, ax)
+            ax.set_xlabel('column')
+            ax.set_ylabel('signal')
+            ax.grid(True)
+            ax.set_title('xyz')
+            ax.legend(fontsize='xx-small',title='HDUi:Region ')
         elif optlist.column is not None:
             columnplot(optlist, hdulist)
+            ax.set_xlabel('row')
+            ax.set_ylabel('signal')
+            ax.grid(True)
+            ax.set_title('xyz')
+            ax.legend(fontsize='xx-small',title='HDUi:Region ')
         else:
             exit(0)
         ncalls.counter = 0
+        fcnt += 1
+    fig.tight_layout()
+    plt.show()
 
 def columnplot(optlist, hdulist):
     """
@@ -153,7 +191,7 @@ def column_plot(optlist, hduid, name, hdudata, slicespec):
              label="{}:[{}:{},{}:{}]".format(name, x1, x2, y1, y2))
 
 
-def lineplot(optlist, hdulist):
+def lineplot(optlist, hdulist, ax):
     """print statistics for region according to options
     """
     hdr = hdulist[0].header
@@ -204,26 +242,41 @@ def lineplot(optlist, hdulist):
             slicespec = slice_region(reg, nrows, ncols)
             logging.debug("calling line_plot() {}[{}]".format(name, reg))
             line_plot(optlist, hduid, name,
-                                           hdulist[hduid].data, slicespec)
-        plt.xlabel('column')
-        plt.ylabel('adu')
-        plt.grid(True)
-        plt.title("{}".format(fname))
-        plt.legend(fontsize='xx-small',title='HDUi:Region ')
-        plt.show()
+                                           hdulist[hduid].data, slicespec, ax)
+            ncalls()
 
-def line_plot(optlist, hduid, name, hdudata, slicespec):
+def line_plot(optlist, hduid, name, hdudata, slicespec, ax):
     """
     """
     (y1, y2, x1, x2) = slicespec
     logging.debug("slicespec: x1={}, x2={}, y1={}, y2={}".format(x1,x2,y1,y2))
     imbuf = hdudata[y1:y2, x1:x2]
-    line1 = np.median(imbuf, axis=0)
-    lmin = line1.min() * 0.985
-    lmax = line1.max() * 1.015
+    logging.debug("optlist.ltype={}".format(optlist.ltype))
+    if not optlist.ltype:
+        line1 = np.median(imbuf, axis=0)
+    elif optlist.ltype == 'median':
+        line1 = np.median(imbuf, axis=0)
+    elif optlist.ltype == 'mean':
+        line1 = np.mean(imbuf, axis=0)
+    elif optlist.ltype == 'clipped':
+        line1 = np.mean(stats.sigma_clip(imbuf, axis=0), axis=0)
+    else:
+        logging.error("ltype incorrect or programmer error")
+        exit(1)
+    if optlist.offset is not None:
+        logging.debug("optlist.offset={}".format(optlist.offset))
+        avg, med, std = stats.sigma_clipped_stats(line1)
+        if optlist.offset == 'mean':
+            line1 = line1 - avg
+        elif optlist.offset == 'delta':
+            logging.debug("ncalls.counter={}".format(ncalls.counter))
+            line1 = line1 - avg + ncalls.counter * 5 * std
+        else:
+            logging.error("--offset arg incorrect or programmer error")
     x = np.arange(x1, x2)
     logging.debug("shape(x)={}".format(np.shape(x)))
-    plt.plot(x, line1,
+    logging.debug("shape(line1)={}".format(np.shape(line1)))
+    ax.plot(x, line1,
              label="{}:[{}:{},{}:{}]".format(name, x1, x2, y1, y2))
 
 def slice_region(reg, nrows, ncols):
@@ -239,7 +292,7 @@ def slice_region(reg, nrows, ncols):
     res = re.match(r"([0-9]+),([0-9]+):([0-9]+)", reg)
     if res:
         (x0, y1, y2) = res.groups()
-        return (int(y1)-1, int(y2), int(x0)-1, int(x0)-1)
+        return (int(y1)-1, int(y2), int(x0)-1, int(x0))
     #- reg = "*,y1:y2" -- row selection, all columns
     res = re.match(r"(\*),([0-9]+):([0-9]+)", reg)
     if res:
@@ -249,12 +302,12 @@ def slice_region(reg, nrows, ncols):
     res = re.match(r"([0-9]+),([0-9]+)", reg)
     if res:
         (x0, y0) = res.groups()
-        return (int(y0)-1,int(y0)-1, int(x0)-1, int(x0)-1)
+        return (int(y0)-1,int(y0), int(x0)-1, int(x0))
     # reg = "x1:x2,y0" -- single row
     res = re.match(r"([0-9]+):([0-9]+),([0-9]+)", reg)
     if res:
         (x1, x2, y0) = res.groups()
-        return  (int(y0)-1, int(y0)-1, int(x1)-1, int(x2))
+        return  (int(y0)-1, int(y0), int(x1)-1, int(x2))
     # reg = "x1:x2,*" -- column selection, all rows
     res = re.match(r"([0-9]+):([0-9]+),(\*)", reg)
     if res:
