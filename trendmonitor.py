@@ -318,7 +318,7 @@ def getTrendingServer():
     else:
         trending_server = "localhost"
         logging.debug("off SLAC network: trending server is localhost")
-        return trending_server
+    return trending_server
 
 def updateTrendingChannelsXML():
     """maintain local cache of trending channels in xml file with
