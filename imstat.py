@@ -64,8 +64,8 @@ def main():
             hdulist.info()
             exit(0)
         elif not optlist.noheadings: #- print filename
-            print "#"
-            print "# {}".format(os.path.basename(ffile))
+            print("#")
+            print("# {}".format(os.path.basename(ffile)))
         if optlist.quicklook:
             quicklook(optlist, hdulist)
         else:
@@ -139,8 +139,6 @@ def stats_proc(optlist, hdulist):
                     stats_print(optlist, hduid, name,
                                 pix[int(y0)-1, int(x1)-1:int(x2)], reg)
                     myarr = pix[int(y0)-1, int(x1)-1:int(x2)]
-                    print "npix={}".format(myarr.size)
-                    print "pix={}".format(myarr)
                     continue
                 # reg = [x1:x2,*]
                 res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
@@ -167,37 +165,37 @@ def stats_print(optlist, sid, name, buf, reg):
     if not optlist.stats:
         optlist.stats = ["mean", "median", "stddev", "min", "max"]
     if not optlist.noheadings and ncalls.counter == 0:
-        print "#{:>3s} {:>9s}".format("id", "HDUname"),
+        print("#{:>3s} {:>9s}".format("id", "HDUname"), end="")
         if "mean" in  optlist.stats:
-            print "{:>9s}".format("mean"),
+            print("{:>9s}".format("mean"), end="")
         if "median" in  optlist.stats:
-            print "{:>9s}".format("median"),
+            print("{:>9s}".format("median"), end="")
         if "stddev" in  optlist.stats:
-            print "{:>7s}".format("stddev"),
+            print("{:>7s}".format("stddev"), end="")
         if "min" in  optlist.stats:
-            print "{:>7s}".format("min"),
+            print("{:>7s}".format("min"), end="")
         if "max" in  optlist.stats:
-            print "{:>7s}".format("max"),
+            print("{:>7s}".format("max"), end="")
         if reg:
-            print " {:20s}".format("region"),
-        print #-- newline
+            print(" {:20s}".format("region"), end="")
+        print("") #-- newline
 
     if not optlist.noheadings:
-        print " {:3d} {:>9s}".format(sid, name),
+        print(" {:3d} {:>9s}".format(sid, name), end="")
 
     if "mean" in  optlist.stats:
-        print "{:>9g}".format(np.mean(buf)),
+        print("{:>9g}".format(np.mean(buf)), end="")
     if "median" in  optlist.stats:
-        print "{:>9g}".format(np.median(buf)),
+        print("{:>9g}".format(np.median(buf)), end="")
     if "stddev" in  optlist.stats:
-        print "{:>7.2g}".format(np.std(buf)),
+        print("{:>7.2g}".format(np.std(buf)), end="")
     if "min" in  optlist.stats:
-        print "{:>7g}".format(np.min(buf)),
+        print("{:>7g}".format(np.min(buf)), end="")
     if "max" in  optlist.stats:
-        print "{:>7g}".format(np.max(buf)),
+        print("{:>7g}".format(np.max(buf)), end="")
     if reg:
-        print " {:20s}".format(reg),
-    print #-- newline
+        print(" {:20s}".format(reg), end="")
+    print("") #-- newline
     ncalls() #-- track call count, acts like static variable
 
 def quicklook(optlist, hdulist):
@@ -307,45 +305,45 @@ def quicklook_print(optlist, sid, name, sig_buf,
     if optlist.dipoles:
         quick_fields.append("dipoles")
     if not optlist.noheadings and ncalls.counter == 0:
-        print "#{:>3s} {:>9s}".format("id", "HDUname"),
+        print("#{:>3s} {:>9s}".format("id", "HDUname"), end="")
         if "mean" in  quick_fields:
-            print " {:>6s}".format("median"),
+            print(" {:>6s}".format("median"), end="")
         if "bias" in  quick_fields:
-            print " {:>5s}".format("bias"),
+            print(" {:>5s}".format("bias"), end="")
         if "signal" in  quick_fields:
-            print " {:>6s}".format("signal"),
+            print(" {:>6s}".format("signal"), end="")
         if "noise" in  quick_fields:
-            print " {:>7s}".format("noise"),
+            print(" {:>7s}".format("noise"), end="")
         if "adu/sec" in  quick_fields and expt > 0:
-            print "{:>8s}".format("adu/sec"),
+            print("{:>8s}".format("adu/sec"), end="")
         if "eper:s-cte" in  quick_fields:
-            print "{:>9s}".format("s-cte"),
+            print("{:>9s}".format("s-cte"), end="")
         if "eper:p-cte" in  quick_fields:
-            print "{:>9s}".format("p-cte"),
+            print("{:>9s}".format("p-cte"), end="")
         if "tearing" in  quick_fields:
-            print "{:>15s}".format("tearing: L  R"),
+            print("{:>15s}".format("tearing: L  R"), end="")
         if "dipoles" in  quick_fields:
-            print "{:>8s}".format("%dipoles"),
-        print #-- newline
+            print("{:>9s}".format("%dipoles"), end="")
+        print("") #-- newline
 
     if not optlist.noheadings:
-        print " {:3d} {:>9s}".format(sid, name),
+        print(" {:3d} {:>9s}".format(sid, name), end="")
 
     if "mean" in  quick_fields:
         sig_mean = np.median(sig_buf)
-        print " {:>6g}".format(sig_mean),
+        print(" {:>6g}".format(sig_mean), end="")
     if "bias" in  quick_fields:
         bias_mean = np.median(bias_buf)
-        print " {:>5g}".format(bias_mean),
+        print(" {:>5g}".format(bias_mean), end="")
     if "signal" in  quick_fields:
         signal = sig_mean - bias_mean
-        print " {:>6g}".format(signal),
+        print(" {:>6g}".format(signal), end="")
     if "noise" in  quick_fields:
         (nrows, ncols) = np.shape(bias_buf)
-        print " {:>7.4g}".format(np.std(
-            bias_buf[int(nrows/2-nrows/20):int(nrows/2+nrows/20), 3:ncols-2])),
+        print(" {:>7.4g}".format(np.std(
+            bias_buf[int(nrows/2-nrows/20):int(nrows/2+nrows/20), 3:ncols-2])), end="")
     if "adu/sec" in  quick_fields and expt > 0:
-        print "{:>8.2f}".format(float(signal)/expt),
+        print("{:>8.2f}".format(float(signal)/expt), end="")
     if "eper:s-cte" in  quick_fields:
         debugmsg = "s-cte------------------"
         logging.debug(debugmsg)
@@ -354,7 +352,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         #- define region to measure signal used in cte calc
         y1 = int(nrows/2-nrows/10)
         y2 = int(nrows/2+nrows/10)
-        x0 = ncols-ncols/20
+        x0 = ncols-int(ncols/20)
         x1 = ncols-1
         debugmsg = "s_n=sig_buf[{}:{},{}:{}]".format(y1,y2,x0,x1)
         logging.debug(debugmsg)
@@ -379,7 +377,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         logging.debug(debugmsg)
         if l_n > 0.0:
             eper = 1 - (l_nn / (nsig_cols * l_n))
-            print " {:>8.6g}".format(eper),
+            print(" {:>8.6g}".format(eper), end="")
     if "eper:p-cte" in  quick_fields:
         debugmsg = "p-cte------------------"
         logging.debug(debugmsg)
@@ -426,7 +424,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         (nrows, ncols) = np.shape(sig_buf)
         if l_n > 0.0:
             eper = 1 - (l_nn / (nrows * l_n))
-            print " {:>8.6g}".format(eper),
+            print(" {:>8.6g}".format(eper), end="")
     #---------
     if "tearing" in  quick_fields:
         debugmsg = "tearing check----------"
@@ -443,12 +441,12 @@ def quicklook_print(optlist, sid, name, sig_buf,
         arr3 = np.median(sig_buf[:,2:40], axis=1)
         arr4 = (arr3 - sig_buf[:,0])/np.std(arr3)
         tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
-        print "{:>4.1f}".format(tm),
+        print("{:>4.1f}".format(tm), end="")
         #- right side
         arr3 = np.median(sig_buf[:,-40:-2], axis=1)
         arr4 = (arr3 - sig_buf[:,-0])/np.std(arr3)
         tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
-        print "{:>4.1f}".format(tm),
+        print("{:>4.1f}".format(tm), end="")
     #---------
     if "dipoles" in  quick_fields:
         debugmsg = "dipoles check----------"
@@ -463,8 +461,8 @@ def quicklook_print(optlist, sid, name, sig_buf,
     #- add one to counter each time such a pair is found
     #- print out the % of pixels occupied by dipoles
         (nrows, ncols) = np.shape(sig_buf)
-        arr1 = sig_buf[-nrows/10:-1,:] #- use top 10% of array
-        debugmsg = "using subarray [{}:{},:]".format(-nrows/10,-1)
+        arr1 = sig_buf[-int(nrows/10):-1,:] #- use top 10% of array
+        debugmsg = "using subarray [{}:{},:]".format(-int(nrows/10),-1)
         logging.debug(debugmsg)
         arr2 = arr1.flatten('F') #- flatten to 1d in column order
         avg2, med2, std2 = stats.sigma_clipped_stats(arr2)
@@ -477,8 +475,8 @@ def quicklook_print(optlist, sid, name, sig_buf,
                 ndipole += 1
         debugmsg = "dipole count = {}".format(ndipole)
         logging.debug(debugmsg)
-        print "{:>8.2f}".format(100.0*float(2*ndipole)/(np.size(arr1)))
-    print #-- newline
+        print("{:>9.2f}".format(100.0*float(2*ndipole)/(np.size(arr1))), end="")
+    print("") #-- newline
     ncalls() #-- track call count, acts like static variable
 
 def ncalls():

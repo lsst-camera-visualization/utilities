@@ -71,51 +71,103 @@ def main():
 
     # layout of plot view
     nfiles = len(optlist.fitsfile)
-    npcols = int(math.ceil(math.sqrt(nfiles)))
-    nprows = int(math.ceil(float(nfiles)/npcols))
-    logging.debug("subplots layout for nfiles={} is nprows={} x npcols={}".format(nfiles, nprows, npcols))
+    if nfiles > 1:
+       npcols = int(math.ceil(math.sqrt(nfiles)))
+       nprows = int(math.ceil(float(nfiles)/npcols))
+       if npcols*nprows == nfiles & nfiles > 1:
+           npcols += 1
+    else:
+        npcols = nprows = 1
+    logging.info("subplots layout for nfiles={} is nprows={} x npcols={}".format(nfiles, nprows, npcols))
     fig, axes = plt.subplots(nprows, npcols, sharey=True)
-    fcnt = 0
+    titleString = long_substr(optlist.fitsfile)
+    fig.suptitle("*{}*...".format(titleString))
+
     # begin processing -- loop over files
-    for ffile in optlist.fitsfile:
-        logging.debug("processing {}".format(ffile))
-        row = fcnt / npcols
-        col = fcnt % npcols
-        logging.debug("row={} col={}".format(row, col))
-        logging.debug("shape(axes)={}".format(np.shape(axes)))
-        if np.shape(axes) == ():
-            ax = axes
-        else:
-            ax = axes.flatten()[row * npcols + col]
-        try:
-            hdulist = fits.open(ffile)
-        except IOError as ioerr:
-            emsg = "IOError: {}".format(ioerr)
-            logging.error(emsg)
-            exit(1)
-        if optlist.info: # just print the image info and exit
-            hdulist.info()
-            exit(0)
-        if optlist.line is not None:
-            lineplot(optlist, hdulist, ax)
-            ax.set_xlabel('column')
-            ax.set_ylabel('signal')
-            ax.grid(True)
-            ax.set_title('xyz')
-            ax.legend(fontsize='xx-small',title='HDUi:Region ')
-        elif optlist.column is not None:
-            columnplot(optlist, hdulist)
-            ax.set_xlabel('row')
-            ax.set_ylabel('signal')
-            ax.grid(True)
-            ax.set_title('xyz')
-            ax.legend(fontsize='xx-small',title='HDUi:Region ')
-        else:
-            exit(0)
-        ncalls.counter = 0
-        fcnt += 1
+    #for ffile in optlist.fitsfile:
+    fcnt = 0
+    for row in range(nprows):
+        for col in range(npcols):
+            if fcnt < nfiles:
+                ffile = optlist.fitsfile[fcnt]
+                logging.debug("processing {}".format(ffile))
+                logging.debug("row={} col={}".format(row, col))
+                logging.info("row={} col={}".format(row, col))
+                logging.debug("shape(axes)={}".format(np.shape(axes)))
+                if np.shape(axes) == ():
+                    ax = axes
+                else:
+                    #ax = axes.flatten()[row * npcols + col]
+                    ax = axes[row, col]
+                try:
+                    hdulist = fits.open(ffile)
+                except IOError as ioerr:
+                    emsg = "IOError: {}".format(ioerr)
+                    logging.error(emsg)
+                    exit(1)
+                if optlist.info: # just print the image info and exit
+                    hdulist.info()
+                    continue
+                if optlist.line is not None:
+                    lineplot(optlist, hdulist, ax)
+                    ax.set_xlabel('column')
+                    ax.set_ylabel('signal')
+                    ax.grid(True)
+                    ax.set_title('xyz')
+                    #ax.legend(fontsize='xx-small',title='HDUi:Region ')
+                elif optlist.column is not None:
+                    columnplot(optlist, hdulist)
+                    ax.set_xlabel('row')
+                    ax.set_ylabel('signal')
+                    ax.grid(True)
+                    ax.set_title('xyz')
+                    #ax.legend(fontsize='xx-small',title='HDUi:Region ')
+                else:
+                    exit(0)
+            else:
+                ax = axes.flatten()[fcnt]
+                ax.grid(False)
+                ax.set_frame_on(False)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
+            ncalls.counter = 0
+            fcnt += 1
+            if fcnt == nfiles:
+                handles, labels = ax.get_legend_handles_labels()
+            if fcnt == nprows * npcols:
+                #ax.legend(handles, labels, fontsize='x-small',title='HDUi:Region ')
+                ax.legend(handles, labels, title='HDUi:Region ')
+
+    if optlist.info: # just print the image info and exit
+        exit()
+    #fig.legend(handles, labels, loc='lower right', fontsize='xx-small')
+    #ax.legend(fontsize='xx-small',title='HDUi:Region ')
+    #plt.plot(x, column1,
+    #         label="{}:[{}:{},{}:{}]".format(name, x1, x2, y1, y2))
+    #fig.set_size_inches()
+    #ax.legend(fontsize='xx-small',title='HDUi:Region ')
+    #fig.legend(loc=7, fontsize='xx-small', title='HDUi:Region ')
+    #fig.legend(handles=(), labels=(), loc='center')
+    #plt.legend( lines, labels, loc = 'lower center', bbox_to_anchor = (0,-0.1,1,1),
+    #                       bbox_transform = plt.gcf().transFigure )
+    #---handles, labels = ax.get_legend_handles_labels()
+    #---fig.legend(handles, labels, loc='lower right', fontsize='xx-small')
     fig.tight_layout()
+    #fig.tight_layout(rect=(0,0,1,0.9))
     plt.show()
+
+def long_substr(data):
+    """
+    https://stackoverflow.com/questions/2892931/\
+        longest-common-substring-from-more-than-two-strings-python#
+    """
+    substr = ''
+    if len(data) > 1 and len(data[0]) > 0:
+        for i in range(len(data[0])):
+            for j in range(len(data[0])-i+1):
+                if j > len(substr) and all(data[0][i:i+j] in x for x in data):
+                    substr = data[0][i:i+j]
+    return substr
 
 def columnplot(optlist, hdulist):
     """
@@ -432,45 +484,45 @@ def quicklook_print(optlist, sid, name, sig_buf,
     if optlist.dipoles:
         quick_fields.append("dipoles")
     if not optlist.noheadings and ncalls.counter == 0:
-        print "#{:>3s} {:>9s}".format("id", "HDUname"),
+        print("#{:>3s} {:>9s}".format("id", "HDUname"), end="")
         if "mean" in  quick_fields:
-            print " {:>6s}".format("median"),
+            print(" {:>6s}".format("median"), end="")
         if "bias" in  quick_fields:
-            print " {:>5s}".format("bias"),
+            print(" {:>5s}".format("bias"), end="")
         if "signal" in  quick_fields:
-            print " {:>6s}".format("signal"),
+            print(" {:>6s}".format("signal"), end="")
         if "noise" in  quick_fields:
-            print " {:>7s}".format("noise"),
+            print(" {:>7s}".format("noise"), end="")
         if "adu/sec" in  quick_fields and expt > 0:
-            print "{:>8s}".format("adu/sec"),
+            print("{:>8s}".format("adu/sec"), end="")
         if "eper:s-cte" in  quick_fields:
-            print "{:>9s}".format("s-cte"),
+            print("{:>9s}".format("s-cte"), end="")
         if "eper:p-cte" in  quick_fields:
-            print "{:>9s}".format("p-cte"),
+            print("{:>9s}".format("p-cte"), end="")
         if "tearing" in  quick_fields:
-            print "{:>15s}".format("tearing: L  R"),
+            print("{:>15s}".format("tearing: L  R"), end="")
         if "dipoles" in  quick_fields:
-            print "{:>8s}".format("%dipoles"),
-        print #-- newline
+            print("{:>8s}".format("%dipoles"), end="")
+        print("") #-- newline
 
     if not optlist.noheadings:
-        print " {:3d} {:>9s}".format(sid, name),
+        print(" {:3d} {:>9s}".format(sid, name), end="")
 
     if "mean" in  quick_fields:
         sig_mean = np.median(sig_buf)
-        print " {:>6g}".format(sig_mean),
+        print(" {:>6g}".format(sig_mean), end="")
     if "bias" in  quick_fields:
         bias_mean = np.median(bias_buf)
-        print " {:>5g}".format(bias_mean),
+        print(" {:>5g}".format(bias_mean), end="")
     if "signal" in  quick_fields:
         signal = sig_mean - bias_mean
-        print " {:>6g}".format(signal),
+        print(" {:>6g}".format(signal), end="")
     if "noise" in  quick_fields:
         (nrows, ncols) = np.shape(bias_buf)
-        print " {:>7.4g}".format(np.std(
-            bias_buf[int(nrows/2-nrows/20):int(nrows/2+nrows/20), 3:ncols-2])),
+        print(" {:>7.4g}".format(np.std(
+            bias_buf[int(nrows/2-nrows/20):int(nrows/2+nrows/20), 3:ncols-2])), end="")
     if "adu/sec" in  quick_fields and expt > 0:
-        print "{:>8.2f}".format(float(signal)/expt),
+        print("{:>8.2f}".format(float(signal)/expt), end="")
     if "eper:s-cte" in  quick_fields:
         debugmsg = "s-cte------------------"
         logging.debug(debugmsg)
@@ -504,7 +556,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         logging.debug(debugmsg)
         if l_n > 0.0:
             eper = 1 - (l_nn / (nsig_cols * l_n))
-            print " {:>8.6g}".format(eper),
+            print(" {:>8.6g}".format(eper), end="")
     if "eper:p-cte" in  quick_fields:
         debugmsg = "p-cte------------------"
         logging.debug(debugmsg)
@@ -551,7 +603,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         (nrows, ncols) = np.shape(sig_buf)
         if l_n > 0.0:
             eper = 1 - (l_nn / (nrows * l_n))
-            print " {:>8.6g}".format(eper),
+            print(" {:>8.6g}".format(eper), end="")
     #---------
     if "tearing" in  quick_fields:
         debugmsg = "tearing check----------"
@@ -568,12 +620,12 @@ def quicklook_print(optlist, sid, name, sig_buf,
         arr3 = np.median(sig_buf[:,2:40], axis=1)
         arr4 = (arr3 - sig_buf[:,0])/np.std(arr3)
         tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
-        print "{:>4.1f}".format(tm),
+        print("{:>4.1f}".format(tm), end="")
         #- right side
         arr3 = np.median(sig_buf[:,-40:-2], axis=1)
         arr4 = (arr3 - sig_buf[:,-0])/np.std(arr3)
         tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
-        print "{:>4.1f}".format(tm),
+        print("{:>4.1f}".format(tm), end="")
     #---------
     if "dipoles" in  quick_fields:
         debugmsg = "dipoles check----------"
@@ -602,7 +654,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
                 ndipole += 1
         debugmsg = "dipole count = {}".format(ndipole)
         logging.debug(debugmsg)
-        print "{:>8.2f}".format(100.0*float(2*ndipole)/(np.size(arr1)))
+        print("{:>8.2f}".format(100.0*float(2*ndipole)/(np.size(arr1))))
     print #-- newline
     ncalls() #-- track call count, acts like static variable
 
