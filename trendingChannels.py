@@ -119,8 +119,10 @@ def getAllChannels():
     """pulls all the channels
     """
     trending_server = getTrendingServer()
+    logging.debug("trending_server={}".format(trending_server))
     listpath="8080/rest/data/dataserver/listchannels"
     url = "http://{}:{}".format(trending_server, listpath)
+    logging.debug("url = {}".format(url))
 
     # creating HTTP response object from given url
     try:
@@ -148,7 +150,7 @@ def getTrendingServer():
     else:
         trending_server = "localhost"
         logging.debug("off SLAC network: trending server is localhost")
-        return trending_server
+    return trending_server
 
 def updateTrendingChannelsXML():
     """maintain local cache of trending channels in xml file with
@@ -160,11 +162,11 @@ def updateTrendingChannelsXML():
     channelFile = "{}/.trender/listchannels.xml".format(os.environ.get('HOME'))
     #- check channelFile exists, get mtime, update if need be
     if not os.path.exists(cachedir): #- make cachdir if not exist
-        os.mkdirs(cachedir)
+        os.mkdir(cachedir)
     if not os.path.isdir(cachedir):    #- is not a directory
         logging.error("{} is not a directory, exiting...".format(cachedir))
         exit(1)
-    if os.path.exists(channelFile): #- file exists or not
+    if os.path.exists(channelFile): #- file exists
         statinfo = os.stat(channelFile)
         mode = statinfo.st_mode
         if not S_IWUSR&mode: #- not writeable
