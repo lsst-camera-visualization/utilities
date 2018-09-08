@@ -11,6 +11,7 @@ from astropy.io import fits
 from astropy import stats
 import numpy as np
 
+
 def parse_args():
     """handle command line"""
     parser = argparse.ArgumentParser(
@@ -22,7 +23,8 @@ def parse_args():
     parser.add_argument("--debug", action='store_true',
                         help="print additional debugging messages")
     parser.add_argument("--noheadings", action='store_true',
-                        default=False, help="Don't print column heads for stats")
+                        default=False,
+                        help="Don't print column heads for stats")
     hgroup = parser.add_mutually_exclusive_group()
     hgroup.add_argument("--hduname", nargs='+',
                         metavar='idn', help="process HDU list by names")
@@ -42,6 +44,7 @@ def parse_args():
                         help="add dipole metric to quicklook output")
     return parser.parse_args()
 
+
 def main():
     """main logic:"""
     optlist = parse_args()
@@ -60,10 +63,10 @@ def main():
             emsg = "IOError: {}".format(ioerr)
             logging.error(emsg)
             exit(1)
-        if optlist.info: # just print the image info and exit
+        if optlist.info:  # just print the image info and exit
             hdulist.info()
             exit(0)
-        elif not optlist.noheadings: #- print filename
+        elif not optlist.noheadings:  # print filename
             print("#")
             print("# {}".format(os.path.basename(ffile)))
         if optlist.quicklook:
@@ -76,7 +79,7 @@ def main():
 def stats_proc(optlist, hdulist):
     """print statistics for region according to options
     """
-    hduids = []  #-- make a list of HDU ids to work on
+    hduids = []  # make a list of HDU ids to work on)
     if optlist.hduname:
         for hduname in optlist.hduname:
             try:
@@ -88,12 +91,12 @@ def stats_proc(optlist, hdulist):
 
     elif optlist.hduindex:
         hduids = optlist.hduindex
-    else: #- all segments
+    else:  # all segments)
         for hdu in hdulist:
             if isinstance(hdu, fits.ImageHDU):
                 hduids.append(hdulist.index_of(hdu.name))
 
-    for hduid in hduids: # process each with optional region
+    for hduid in hduids:  # process each with optional region
         pix = hdulist[hduid].data
         name = hdulist[hduid].name
         reg = ""
@@ -110,7 +113,7 @@ def stats_proc(optlist, hdulist):
                                 pix[int(y1)-1:int(y2),
                                     int(x1)-1:int(x2)], reg)
                     continue
-                #- reg = [x0,y1:y2] -- single column
+                # reg = [x0,y1:y2] -- single column)
                 res = re.match(r"\[*([0-9]+),([0-9]+):([0-9]+)\]*",
                                reg)
                 if res:
@@ -118,7 +121,7 @@ def stats_proc(optlist, hdulist):
                     stats_print(optlist, hduid, name,
                                 pix[int(y1)-1:int(y2), int(x0)-1], reg)
                     continue
-                #- reg = [*,y1:y2]
+                # reg = [*,y1:y2])
                 res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
                 if res:
                     (x, y1, y2) = res.groups()
@@ -138,7 +141,6 @@ def stats_proc(optlist, hdulist):
                     (x1, x2, y0) = res.groups()
                     stats_print(optlist, hduid, name,
                                 pix[int(y0)-1, int(x1)-1:int(x2)], reg)
-                    myarr = pix[int(y0)-1, int(x1)-1:int(x2)]
                     continue
                 # reg = [x1:x2,*]
                 res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
@@ -147,7 +149,7 @@ def stats_proc(optlist, hdulist):
                     stats_print(optlist, hduid, name,
                                 pix[:, int(x1)-1:int(x2)], reg)
                     continue
-                # reg = [*,*] #- redundant, but for completeness
+                # reg = [*,*] # redundant, but for completeness)
                 res = re.match(r"\[*(\*),(\*)\]*", reg)
                 if res:
                     (x, y) = res.groups()
@@ -158,6 +160,7 @@ def stats_proc(optlist, hdulist):
                         format(reg)
                     logging.error(emsg)
                     exit(1)
+
 
 def stats_print(optlist, sid, name, buf, reg):
     """perform and print the given statistics quantities
@@ -178,7 +181,7 @@ def stats_print(optlist, sid, name, buf, reg):
             print("{:>7s}".format("max"), end="")
         if reg:
             print(" {:20s}".format("region"), end="")
-        print("") #-- newline
+        print("")  # newline)
 
     if not optlist.noheadings:
         print(" {:3d} {:>9s}".format(sid, name), end="")
@@ -195,8 +198,8 @@ def stats_print(optlist, sid, name, buf, reg):
         print("{:>7g}".format(np.max(buf)), end="")
     if reg:
         print(" {:20s}".format(reg), end="")
-    print("") #-- newline
-    ncalls() #-- track call count, acts like static variable
+    print("")  # newline)
+    ncalls()  # track call count, acts like static variable)
 
 def quicklook(optlist, hdulist):
     """print quicklook for hdu according to options
@@ -210,19 +213,19 @@ def quicklook(optlist, hdulist):
         emsg = "adu/sec won't be available"
         logging.warn(emsg)
         expt = 0.0
-    hduids = []  #-- ids of hdus to operate on
+    hduids = []  # ids of hdus to operate on)
     if optlist.hduname:
         for hduname in optlist.hduname:
             hduids.append(hdulist.index_of(hduname))
     elif optlist.hduindex:
         hduids = optlist.hduindex
-    else: #- all segments
+    else:  # all segments)
         for hdu in hdulist:
             if isinstance(hdu, fits.ImageHDU):
                 hduids.append(hdulist.index_of(hdu.name))
 
     for hduid in hduids:
-        #- get header details to extract signal, bias regions
+        # get header details to extract signal, bias regions)
         pix = hdulist[hduid].data
         logging.debug("shape(pix)={}".format(np.shape(pix)))
         name = hdulist[hduid].name
@@ -245,7 +248,7 @@ def quicklook(optlist, hdulist):
             exit(1)
         naxis1 = int(hdr['NAXIS1'])
         naxis2 = int(hdr['NAXIS2'])
-        #- define region to measure signal level
+        # define region to measure signal level)
         x1 = int(datasec[0]) - 1
         x2 = int(datasec[1])
         y1 = int(datasec[2]) - 1
@@ -324,7 +327,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
             print("{:>15s}".format("tearing: L  R"), end="")
         if "dipoles" in  quick_fields:
             print("{:>9s}".format("%dipoles"), end="")
-        print("") #-- newline
+        print("")  # newline)
 
     if not optlist.noheadings:
         print(" {:3d} {:>9s}".format(sid, name), end="")
@@ -349,7 +352,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         logging.debug(debugmsg)
         (nrows, ncols) = np.shape(sig_buf)
         nsig_cols = ncols
-        #- define region to measure signal used in cte calc
+        # define region to measure signal used in cte calc)
         y1 = int(nrows/2-nrows/10)
         y2 = int(nrows/2+nrows/10)
         x0 = ncols-int(ncols/20)
@@ -382,25 +385,24 @@ def quicklook_print(optlist, sid, name, sig_buf,
         debugmsg = "p-cte------------------"
         logging.debug(debugmsg)
         (nrows, ncols) = np.shape(p_bias_buf)
-        l_nrows = 3 # number of overscan rows used to determing cte
-        #- define region to measure bias used in cte calc
+        l_nrows = 3  # number of overscan rows used to determing cte
+        # define region to measure bias used in cte calc)
         x1 = int(ncols/2-ncols/10)
         x2 = int(ncols/2+ncols/10)
         y0 = l_nrows
         y1 = nrows
-        p_bias_mean = np.mean(p_bias_buf[y0:y1,x1:x2])
-        debugmsg = "p_bias_mean=mean(p_bias_buf[{}:{},{}:{}])".format(y0,y1,x1,x2)
+        p_bias_mean = np.mean(p_bias_buf[y0:y1, x1:x2])
+        debugmsg = "p_bias_mean=mean(p_bias_buf[{}:{}, {}:{}])".format(y0, y1, x1, x2)
         logging.debug(debugmsg)
         debugmsg = "p_bias_mean={:>10.6g}".format(p_bias_mean)
         logging.debug(debugmsg)
-        #- define region to measure signal used in cte calc
+        # define region to measure signal used in cte calc)
         (nrows, ncols) = np.shape(sig_buf)
-        nsig_rows = nrows
         x1 = int(ncols/2-ncols/10)
         x2 = int(ncols/2+ncols/10)
         y0 = nrows-100
         y1 = nrows-1
-        debugmsg = "s_n=sig_buf[{}:{},{}:{}]".format(y0,y1,x1,x2)
+        debugmsg = "s_n=sig_buf[{}:{},{}:{}]".format(y0, y1, x1, x2)
         logging.debug(debugmsg)
         s_n = sig_buf[y0:y1, x1:x2]
         l_n = np.mean(s_n) - p_bias_mean
@@ -412,7 +414,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         y1 = l_nrows
         debugmsg = "shape(p_bias_buf)={}".format(np.shape(p_bias_buf))
         logging.debug(debugmsg)
-        debugmsg = "b_n=p_bias_buf[{}:{},{}:{}]".format(x1,x2,y0,y1)
+        debugmsg = "b_n=p_bias_buf[{}:{},{}:{}]".format(x1, x2, y0, y1)
         logging.debug(debugmsg)
         b_n = p_bias_buf[y0:y1, x1:x2]
         debugmsg = "shape(b_n)={}".format(np.shape(b_n))
@@ -429,20 +431,20 @@ def quicklook_print(optlist, sid, name, sig_buf,
     if "tearing" in  quick_fields:
         debugmsg = "tearing check----------"
         logging.debug(debugmsg)
-    #- column-1 into an array arr1
-    #- column-2..N into 2nd array with dimension N-1 x Ncols arr2
-    #- take median of 2nd array to make 1-D: arr3
-    #- find stddev of arr3
-    #- form (arr3 - arr1)/stddev as arr4
-    #- find the first value of index "j" in sorted(arr4) less than 1.0
-    #- report out (len(arr4)-j)/len(arr4) to 1 digit as tearing where
-        #- this represents the fraction of the array less than 1.0
-        #- left side
+    # column-1 into an array arr1)
+    # column-2..N into 2nd array with dimension N-1 x Ncols arr2)
+    # take median of 2nd array to make 1-D: arr3)
+    # find stddev of arr3)
+    # form (arr3 - arr1)/stddev as arr4)
+    # find the first value of index "j" in sorted(arr4) less than 1.0)
+    # report out (len(arr4)-j)/len(arr4) to 1 digit as tearing where)
+        # this represents the fraction of the array less than 1.0)
+        # left side)
         arr3 = np.median(sig_buf[:,2:40], axis=1)
         arr4 = (arr3 - sig_buf[:,0])/np.std(arr3)
         tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
         print("{:>4.1f}".format(tm), end="")
-        #- right side
+        # right side)
         arr3 = np.median(sig_buf[:,-40:-2], axis=1)
         arr4 = (arr3 - sig_buf[:,-0])/np.std(arr3)
         tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
@@ -451,20 +453,20 @@ def quicklook_print(optlist, sid, name, sig_buf,
     if "dipoles" in  quick_fields:
         debugmsg = "dipoles check----------"
         logging.debug(debugmsg)
-    #- region to work on is sig_buf, say 200 rows near top
-    #- transpose to column order
-    #- find sigma-clipped mean, median and stdev
-    #- subtract mean from array
-    #- divide the array by sigma
-    #- go through array finding pixel pairs of differing sign
-    #- and where |A(n)-A(n+1)| > 6
-    #- add one to counter each time such a pair is found
-    #- print out the % of pixels occupied by dipoles
+    # region to work on is sig_buf, say 200 rows near top)
+    # transpose to column order)
+    # find sigma-clipped mean, median and stdev)
+    # subtract mean from array)
+    # divide the array by sigma)
+    # go through array finding pixel pairs of differing sign)
+    # and where |A(n)-A(n+1)| > 6)
+    # add one to counter each time such a pair is found)
+    # print out the % of pixels occupied by dipoles)
         (nrows, ncols) = np.shape(sig_buf)
-        arr1 = sig_buf[-int(nrows/10):-1,:] #- use top 10% of array
+        arr1 = sig_buf[-int(nrows/10):-1,:] # use top 10% of array)
         debugmsg = "using subarray [{}:{},:]".format(-int(nrows/10),-1)
         logging.debug(debugmsg)
-        arr2 = arr1.flatten('F') #- flatten to 1d in column order
+        arr2 = arr1.flatten('F')  # flatten to 1d in column order)
         avg2, med2, std2 = stats.sigma_clipped_stats(arr2)
         debugmsg = "clipped stats: avg:{:>.3g} med:{} stdev:{:>.3g}".format(avg2, med2, std2)
         logging.debug(debugmsg)
@@ -476,8 +478,8 @@ def quicklook_print(optlist, sid, name, sig_buf,
         debugmsg = "dipole count = {}".format(ndipole)
         logging.debug(debugmsg)
         print("{:>9.2f}".format(100.0*float(2*ndipole)/(np.size(arr1))), end="")
-    print("") #-- newline
-    ncalls() #-- track call count, acts like static variable
+    print("")  # newline)
+    ncalls()  # track call count, acts like static variable)
 
 def ncalls():
     """maintain a counter

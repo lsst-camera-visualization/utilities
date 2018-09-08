@@ -3,6 +3,7 @@
 """
 
 import argparse
+import logging
 from astropy.io import fits
 
 
@@ -25,7 +26,9 @@ def parse_args():
     return parser.parse_args()
     # return opts
 
+
 def main():
+    """print out headers"""
     optlist = parse_args()
     # begin processing -- loop over files
     for ffile in optlist.fitsfile:
@@ -35,7 +38,7 @@ def main():
             emsg = "IOError: {}".format(ioerr)
             logging.error(emsg)
             exit(1)
-        if optlist.info: # just print the image info and exit
+        if optlist.info:  # just print the image info and exit
             hdulist.info()
         else:
             header_print(optlist, hdulist)
@@ -49,13 +52,13 @@ def header_print(opts, hdulist):
     if opts.hduname:
         index = hdulist.index_of(opts.hduname)
         hdu = hdulist[index]
-        print "#--------{}---------".format(opts.hduname)
-        print hdu.header.tostring(sep='\n', endcard=False, padding=False)
+        print("#--------{}---------".format(opts.hduname))
+        print(hdu.header.tostring(sep='\n', endcard=False, padding=False))
     # print single hdu by index
     elif opts.hduindex:
         hdu = hdulist[opts.hduindex]
-        print "#--------extension {}---------".format(opts.hduindex)
-        print hdu.header.tostring(sep='\n', endcard=False, padding=False)
+        print("#--------extension {}---------".format(opts.hduindex))
+        print(hdu.header.tostring(sep='\n', endcard=False, padding=False))
     # print primary and Image headers, others optionally
     else:
         # build dicts etc. to facilitate processing
@@ -69,8 +72,8 @@ def header_print(opts, hdulist):
                 otherlist[hdu.name] = index
         # print the primary
         hdu = hdulist[pindex]
-        print "#--------{}---------".format(hdu.name)
-        print hdu.header.tostring(sep='\n', endcard=False, padding=False)
+        print("#--------{}---------".format(hdu.name))
+        print(hdu.header.tostring(sep='\n', endcard=False, padding=False))
         # print the Image headers
         if opts.unsorted:
             # in original index order
@@ -78,24 +81,24 @@ def header_print(opts, hdulist):
             ids = list(seglist.values())
             for index in sorted(ids):
                 hdu = hdulist[index]
-                print "#--------{}---------".format(hdu.name)
-                print hdu.header.tostring(
-                    sep='\n', endcard=False, padding=False)
+                print("#--------{}---------".format(hdu.name))
+                print(hdu.header.tostring(
+                    sep='\n', endcard=False, padding=False))
         else:
             # sorted by name (default)
             for name, index in sorted(seglist.iteritems()):
                 hdu = hdulist[index]
-                print "#--------{}---------".format(name)
-                print hdu.header.tostring(
-                    sep='\n', endcard=False, padding=False)
+                print("#--------{}---------".format(name))
+                print(hdu.header.tostring(
+                    sep='\n', endcard=False, padding=False))
         # print the other headers
         if opts.all:
             ids = list(otherlist.values())
             for index in sorted(ids):
                 hdu = hdulist[index]
-                print "#--------{}---------".format(hdu.name)
-                print hdu.header.tostring(sep='\n',
-                                          endcard=False, padding=False)
+                print("#--------{}---------".format(hdu.name))
+                print(hdu.header.tostring(sep='\n',
+                                          endcard=False, padding=False))
     hdulist.close()
 
 if __name__ == '__main__':

@@ -150,7 +150,7 @@ def main():
             #---- state: NOM|WAR|ALA
             #---- tstamp: convert to seconds UTC, later TAI
             #---- description
-            pcols.clear()
+            pcols.clear()  # empty out the dictionary and start over
             #- channel path goes in first
             pcols['channel'] = ch[0]
             root = etree.fromstring(ch[2])
@@ -187,11 +187,12 @@ def main():
             if 'chanval' not in pcols: #- no data, skip
                 logging.debug("no data found for {}".format(pcols['channel']))
                 continue
+            else:
+                chvalstr = "{:>{width}.3g} ".format(float(pcols['chanval'][0]),width=valuew)
             if len(pcols['channel']) > chanw:
                 chanstr = " ...{:<{width}s}".format(pcols['channel'][-(chanw-4):],width=(chanw-4))
             else:
                 chanstr = "{:<{width}s}".format(pcols['channel'],width=chanw)
-            chvalstr = "{:>{width}.3g} ".format(float(pcols['chanval'][0]),width=valuew)
             if 'alarmLow' in pcols:
                 alarmLowstr = "{:>{width}g}".format(float(pcols['alarmLow'][0]),width=alarmw)
             else:
@@ -203,7 +204,7 @@ def main():
             if 'units' in pcols:
                 unitstr = "{:<{width}s}".format(pcols['units'][0],width=unitw)
             else:
-                nitstr = "{:<{width}s}".format("",width=unitw)
+                unitstr = "{:<{width}s}".format("",width=unitw)
             if 'state' in pcols:
                 statestr = "{:<{width}.{width}s}".format(pcols['state'][0],width=statew)
             else:
