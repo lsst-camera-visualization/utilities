@@ -24,20 +24,12 @@ def get_all_channels():
     """pulls all the channels
     """
     trending_server = get_trending_server()
+    if not trending_server:
+        return None
     listpath = "8080/rest/data/dataserver/listchannels?maxIdleSeconds=-1"
     url = "http://{}:{}".format(trending_server, listpath)
 
     # creating HTTP response object from given url
-    try:
-        resp = requests.head(url)
-    except requests.ConnectionError as e:
-        logging.error('ConnectionError: %s', e)
-        logging.error('check status of ssh tunnel to trending server')
-        return None
-    if resp.status_code != 200:
-        logging.error('error: invalid response %s from Trending Server',
-                      resp.status_code)
-        return resp.status_code
     resp = requests.get(url)
     return resp.content
 
@@ -204,7 +196,6 @@ def print_channel_structure(xmlcontent):
                     print('{0}{1}: {2} [{3}]'.format(
                         '    ' * indent, indent, path.split('/')[-1],
                         ', '.join(attribs) if attribs else '-'))
-
 
 
 def update_trending_channels_xml():
