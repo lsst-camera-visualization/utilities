@@ -93,7 +93,9 @@ def stats_proc(optlist, hdulist):
         hduids = optlist.hduindex
     else:  # all segments)
         for hdu in hdulist:
-            if isinstance(hdu, [fits.ImageHDU, fits.CompImageHDU]):
+            if isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
+                logging.debug('adding %s with index %d to hduid list',
+                              hdu.name, hdulist.index_of(hdu.name))
                 hduids.append(hdulist.index_of(hdu.name))
 
     for hduid in hduids:  # process each with optional region
@@ -222,19 +224,19 @@ def quicklook(optlist, hdulist):
         hduids = optlist.hduindex
     else:  # all segments)
         for hdu in hdulist:
-            if isinstance(hdu, fits.ImageHDU):
+            if isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
                 hduids.append(hdulist.index_of(hdu.name))
 
     for hduid in hduids:
         # get header details to extract signal, bias regions)
         pix = hdulist[hduid].data
-        logging.debug("shape(pix)=%s".format(np.shape(pix)))
+        logging.debug('shape(pix)=%s', np.shape(pix))
         name = hdulist[hduid].name
         hdr = hdulist[hduid].header
         try:
             dstr = hdr['DATASEC']
         except KeyError as ke:
-            logging.error('KeyError: {}, required for quicklook mode', ke)
+            logging.error('KeyError: %s, required for quicklook mode', ke)
             exit(1)
         logging.debug('DATASEC=%s', dstr)
         res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
