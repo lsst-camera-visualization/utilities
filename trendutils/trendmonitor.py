@@ -44,10 +44,11 @@ def main():
     # get time spec for the trending data pull
     if optlist.date:
         logging.debug('datestr=%s', optlist.date)
-    (t1, t2) = tu.get_time_interval(None, optlist.date)
-    if t1 is None or t2 is None:
+    t2 = tu.parse_datestr(optlist.date)
+    if t2 is None:
         logging.error("Date assignment failed...exiting")
         exit(1)
+    t2 *= 1000  # convert to ms
     t1 = t2 - 20*1000
     logging.debug('time interval: %d -- %d (%d sec)', t1, t2, (t2-t1)/1000)
 
