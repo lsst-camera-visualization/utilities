@@ -93,10 +93,19 @@ def stats_proc(optlist, hdulist):
         hduids = optlist.hduindex
     else:  # all segments)
         for hdu in hdulist:
-            if isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
+            if isinstance(hdu, fits.PrimaryHDU):
+                if np.shape(hdu.data):
+                    logging.debug('adding %s with index %d to hduid list',
+                                  hdu.name, hdulist.index_of(hdu.name))
+                    hduids.append(hdulist.index_of(hdu.name))
+            elif isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
                 logging.debug('adding %s with index %d to hduid list',
                               hdu.name, hdulist.index_of(hdu.name))
                 hduids.append(hdulist.index_of(hdu.name))
+            else:
+                logging.debug('%s with index %d is not type (Comp)ImageHDU',
+                              hdu.name, hdulist.index_of(hdu.name))
+
 
     for hduid in hduids:  # process each with optional region
         pix = hdulist[hduid].data
@@ -107,7 +116,7 @@ def stats_proc(optlist, hdulist):
         else:
             for reg in optlist.region:
                 res = re.match(
-                    r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
+                    r"\[*([0-9]*):([0-9]+),\s*([0-9]+):([0-9]+)\]*",
                     reg)
                 if res:
                     (x1, x2, y1, y2) = res.groups()
@@ -116,7 +125,7 @@ def stats_proc(optlist, hdulist):
                                     int(x1)-1:int(x2)], reg)
                     continue
                 # reg = [x0,y1:y2] -- single column)
-                res = re.match(r"\[*([0-9]+),([0-9]+):([0-9]+)\]*",
+                res = re.match(r"\[*([0-9]+),\s*([0-9]+):([0-9]+)\]*",
                                reg)
                 if res:
                     (x0, y1, y2) = res.groups()
@@ -124,35 +133,35 @@ def stats_proc(optlist, hdulist):
                                 pix[int(y1)-1:int(y2), int(x0)-1], reg)
                     continue
                 # reg = [*,y1:y2])
-                res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
+                res = re.match(r"\[*(\*),\s*([0-9]+):([0-9]+)\]*", reg)
                 if res:
                     (x, y1, y2) = res.groups()
                     stats_print(optlist, hduid, name,
                                 pix[int(y1)-1:int(y2), :], reg)
                     continue
                 # reg = [x0,y0] -- single pixel
-                res = re.match(r"\[*([0-9]+),([0-9]+)\]*", reg)
+                res = re.match(r"\[*([0-9]+),\s*([0-9]+)\]*", reg)
                 if res:
                     (x0, y0) = res.groups()
                     stats_print(optlist, hduid, name,
                                 pix[int(y0)-1, int(x0)-1], reg)
                     continue
                 # reg = [x1:x2,y0] -- single row
-                res = re.match(r"\[*([0-9]+):([0-9]+),([0-9]+)\]*", reg)
+                res = re.match(r"\[*([0-9]+):([0-9]+),\s*([0-9]+)\]*", reg)
                 if res:
                     (x1, x2, y0) = res.groups()
                     stats_print(optlist, hduid, name,
                                 pix[int(y0)-1, int(x1)-1:int(x2)], reg)
                     continue
                 # reg = [x1:x2,*]
-                res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
+                res = re.match(r"\[*([0-9]+):([0-9]+),\s*(\*)\]*", reg)
                 if res:
                     (x1, x2, y) = res.groups()
                     stats_print(optlist, hduid, name,
                                 pix[:, int(x1)-1:int(x2)], reg)
                     continue
                 # reg = [*,*] # redundant, but for completeness)
-                res = re.match(r"\[*(\*),(\*)\]*", reg)
+                res = re.match(r"\[*(\*),\s*(\*)\]*", reg)
                 if res:
                     (x, y) = res.groups()
                     stats_print(optlist, hduid, name, pix[:, :], reg)
@@ -224,8 +233,19 @@ def quicklook(optlist, hdulist):
         hduids = optlist.hduindex
     else:  # all segments)
         for hdu in hdulist:
-            if isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
+            if isinstance(hdu, fits.PrimaryHDU):
+                if np.shape(hdu.data):
+                    logging.debug('adding %s with index %d to hduid list',
+                                  hdu.name, hdulist.index_of(hdu.name))
+                    hduids.append(hdulist.index_of(hdu.name))
+            elif isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
+                logging.debug('adding %s with index %d to hduid list',
+                              hdu.name, hdulist.index_of(hdu.name))
                 hduids.append(hdulist.index_of(hdu.name))
+            else:
+                logging.debug('%s with index %d is not type (Comp)ImageHDU',
+                              hdu.name, hdulist.index_of(hdu.name))
+
 
     for hduid in hduids:
         # get header details to extract signal, bias regions)

@@ -67,7 +67,7 @@ def hdu_writer(opts):
                 hdulisto.append(hdu)
     if opts.byname:
         # sorted by name
-        for name, index in sorted(seglist.iteritems()):
+        for name, index in sorted(seglist.items()):
             hdulisto.append(hdulist[index])
 
     if opts.randomorder:
@@ -77,7 +77,6 @@ def hdu_writer(opts):
             hdulisto.append(hdulist[idx])
 
     if opts.aslisted:
-        print opts.aslisted
         for idx in opts.aslisted:
             hdulisto.append(hdulist[idx])
 
@@ -88,9 +87,10 @@ def hdu_writer(opts):
 
     hdulisto.info()
     if opts.ofitsfile:
-        hdulisto.writeto(opts.ofitsfile, clobber=True)
+        hdulisto.writeto(opts.ofitsfile, overwrite=True)
         hdulisto.close()
     hdulist.close()
+
 
 if __name__ == '__main__':
     optlist = parse_args()

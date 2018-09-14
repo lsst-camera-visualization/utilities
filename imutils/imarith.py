@@ -9,13 +9,12 @@ import argparse
 import logging
 import textwrap
 import datetime
-from string import join
 import os.path
 from astropy.io import fits
 from astropy import wcs
 import numpy as np
 
-#- module scope objects
+# module scope objects
 operandtypes = {'error': 0, 'file': 1, 'number': 2}
 optypes = ['+', '-', '*', '/']
 
@@ -43,7 +42,7 @@ def parse_args():
                         metavar='idn', help="process HDU list by names")
     hgroup.add_argument("--hduindex", nargs='+', type=int,
                         metavar='idx', help="process HDU list by ids")
-    parser.add_argument("--region", help="region fmt: \"x1:x2,y1:y2\"")
+    parser.add_argument("--region", help="region fmt: \"x1:x2, y1:y2\"")
     parser.add_argument("--debug", action='store_true',
                         help="print additional debugging messages")
     return parser.parse_args()
@@ -73,36 +72,44 @@ def main():
             logging.error("Output file name required")
             exit(1)
 
-    #- 4 cases
+    # 4 cases
     if (op1_type == operandtypes['file'] and
-        op2_type == operandtypes['file']):
+            op2_type == operandtypes['file']):
         # get hdulist1
         # get hdulist2
         # create output hdulist/image -- verify filename etc.
         # do the pixel manipulations
         # load the output headers and update accordingly
         # write the output file
-        #----------------------------------
-        #- Open file used as the Master being modified
+        # ---------------------------------
+        # Open file used as the Master being modified
         try:
-            hdulist1 = fits.open(optlist.operand1, memmap=True)
+            # hdulist1 = fits.open(optlist.operand1, memmap=True)
+            hdulist1 = fits.open(optlist.operand1)
         except IOError as ioerr:
             emsg = "IOError: {}".format(ioerr)
             logging.error(emsg)
             exit(1)
-        #- Open file used to modify the Master
+        except ValueError as verr:
+            logging.error('ValueError: %s', verr)
+            exit(1)
+        # Open file used to modify the Master
         try:
-            hdulist2 = fits.open(optlist.operand2, memmap=True)
+            # hdulist2 = fits.open(optlist.operand2, memmap=True)
+            hdulist2 = fits.open(optlist.operand2)
         except IOError as ioerr:
             emsg = "IOError: {}".format(ioerr)
             logging.error(emsg)
+            exit(1)
+        except ValueError as verr:
+            logging.error('ValueError: %s', verr)
             exit(1)
         # Create the output image and append the primary hdu
         hdulisto = fits.HDUList()
-        hdulisto.append(hdulist1[0])
         # add/modify keys to document the changes
-        #- update DATE keyword and preserve old one
-        #- Note checksums will be invalid
+        # update DATE keyword and preserve old one
+        # Note checksums will be invalid
+        hdulisto.append(fits.ImageHDU(None, hdulist1[0].header))
         hdr = hdulisto[0].header
         hdr.rename_keyword('DATE', 'DATE0')
         cstr = hdr.comments['DATE0']
@@ -112,47 +119,65 @@ def main():
         dtstr = ("{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}.{:03d}".
                  format(dt.year, dt.month, dt.day, dt.hour, dt.minute,
                         dt.second, int(dt.microsecond/1e3)))
-        hdr.insert('DATE0',('DATE', dtstr, cstr))
-        #- add HISTORY lines
+        hdr.insert('DATE0', ('DATE', dtstr, cstr))
+        # add HISTORY lines
         hdr.add_history("Header written by {} at: {}Z".
                         format(os.path.basename(sys.argv[0]), dtstr))
         hdr.add_history("CMD: {} {}".format(
-            os.path.basename(sys.argv[0]), join(sys.argv[1:])))
-        hdulisto[0].add_checksum(dtstr, True)
-        #- loop over HDU id's from Master file, copy non-image HDUs
-        #- and process the image HDUs accordingly
-        for hduid in range(1, len(hdulist1)):
+            os.path.basename(sys.argv[0]), ' '.join(sys.argv[1:])))
+        # loop over HDU id's from Master file, copy non-image HDUs
+        # and process the image HDUs accordingly
+        for hduid in range(0, len(hdulist1)):
             if (optlist.hduindex and
                     hduid not in optlist.hduindex):
                 continue
             if (optlist.hduname and
                     hdulist1[hduid].name not in optlist.hduname):
                 continue
-            if not isinstance(hdulist1[hduid], fits.ImageHDU):
-                # not an Image so just copy to output
+            if isinstance(hdulist1[hduid], fits.PrimaryHDU):  # special case
+                if not np.shape(hdulist1[hduid].data):
+                    continue
+            elif not isinstance(hdulist1[hduid],
+                                (fits.ImageHDU, fits.CompImageHDU)):
+                # not an Image so just copy to output, primary already done
                 hdulisto.append(hdulist1[hduid])
                 continue
-            # verify operand2 is valid
-            if not (isinstance(hdulist2[hduid], fits.ImageHDU) and
-                    (hdulist1[hduid].header['NAXIS1'] ==
-                     hdulist2[hduid].header['NAXIS1']) and
-                    (hdulist1[hduid].header['NAXIS2'] ==
-                     hdulist2[hduid].header['NAXIS2'])):
+            # verify operand2 is valid and matches operand1
+            if isinstance(hdulist2[hduid], fits.PrimaryHDU):  # special case
+                if not (np.shape(hdulist1[hduid].data) and
+                        (hdulist1[hduid].header['NAXIS1'] ==
+                         hdulist2[hduid].header['NAXIS1']) and
+                        (hdulist1[hduid].header['NAXIS2'] ==
+                         hdulist2[hduid].header['NAXIS2'])):
+                    logging.debug('f1.naxis1: %d f2.naxis1: %d',
+                                  hdulist1[hduid].header['NAXIS1'],
+                                  hdulist2[hduid].header['NAXIS1'])
+                    logging.debug('f1.naxis2: %d f2.naxis2: %d',
+                                  hdulist1[hduid].header['NAXIS2'],
+                                  hdulist2[hduid].header['NAXIS2'])
+                    logging.error("Images are not comensurate")
+                    exit(1)
+            elif not (isinstance(hdulist2[hduid],
+                                 (fits.ImageHDU, fits.CompImageHDU)) and
+                      (hdulist1[hduid].header['NAXIS1'] ==
+                       hdulist2[hduid].header['NAXIS1']) and
+                      (hdulist1[hduid].header['NAXIS2'] ==
+                       hdulist2[hduid].header['NAXIS2'])):
                 logging.error("Images are not comensurate")
                 exit(1)
 
-            #- create the hdu
+            # create the hdu
             reg = ""
             if not optlist.region:
                 hdr1 = hdulist1[hduid].header
-                hdulisto.append(
-                    fits.ImageHDU(None, hdr1, hdr1['EXTNAME']))
+                if hduid > 0:
+                    hdulisto.append(fits.ImageHDU(None, hdr1, hdr1['EXTNAME']))
                 hduoid = len(hdulisto) - 1
                 hdr = hdulisto[hduoid].header
                 logging.debug("Before Update header:")
-                logging.debug("\n{}".format(hdr.tostring('\n')))
-                #- Update header
-                #- set dimensions
+                logging.debug('\n%s', hdr.tostring('\n'))
+                # Update header
+                # set dimensions
                 naxis1 = hdr1['NAXIS1']
                 naxis2 = hdr1['NAXIS2']
                 hdr['NAXIS'] = 2
@@ -162,21 +187,25 @@ def main():
                         "size of the n'th axis", after='NAXIS1')
                 hdr['BITPIX'] = -32
                 logging.debug("After Update header:")
-                logging.debug("\n{}".format(hdr.tostring('\n')))
-            else: #- handle regions
-                hdulisto.append( #- no header template
-                    fits.ImageHDU(None, None, None))
+                logging.debug('\n%s', hdr.tostring('\n'))
+            else:  # handle regions
+                if hduid > 0:
+                    hdulisto.append(  # no header template
+                        fits.ImageHDU(None, None, None))
                 hduoid = len(hdulisto) - 1
-                logging.debug("hduoid={}".format(hduoid))
+                logging.debug('hduoid=%s', hduoid)
                 hdr1 = hdulist1[hduid].header.copy()
                 wcses = wcs.find_all_wcs(hdr1)
                 (yslice, xslice) = parse_region(optlist.region)
+                if not yslice or not xslice:
+                    logging.error('parse_region(%s) failed', optlist.region)
+                    exit(1)
                 reg = (yslice, xslice)
                 naxis2 = yslice.stop - yslice.start
                 naxis1 = xslice.stop - xslice.start
                 hdr = hdulisto[hduoid].header
                 logging.debug("Before Update header:")
-                logging.debug("\n{}".format(hdr.tostring('\n')))
+                logging.debug('\n%s', hdr.tostring('\n'))
                 hdr['NAXIS'] = 2
                 hdr.set('NAXIS1', naxis1,
                         "size of the n'th axis", after='NAXIS')
@@ -185,39 +214,38 @@ def main():
                 hdr['EXTNAME'] = hdr1['EXTNAME']
                 if hdr1.count('CHANNEL'):
                     hdr['CHANNEL'] = hdr1['CHANNEL']
-                #- update any wcses
-                new_wcses = []
+                # update any wcses
                 for w in wcses:
                     wreg = w.slice(reg)
                     wreghdr = wreg.to_header()
                     for card in wreghdr.cards:
                         hdr.append(card)
-                #- add HISTORY lines
-                hdr.add_history("Header written by {}".
-                           format(os.path.basename(sys.argv[0])))
+                # add HISTORY lines
+                hdr.add_history("Header written by %s",
+                                os.path.basename(sys.argv[0]))
                 logging.debug("After Update header:")
-                logging.debug("\n{}".format(hdr.tostring('\n')))
-            #- do the arithmetic
+                logging.debug('\n%s', hdr.tostring('\n'))
+            # do the arithmetic
             hdulisto[hduoid].data = ffcalc(hdulist1[hduid].data,
                                            hdulist2[hduid].data,
                                            optlist.op, reg)
             hdulisto[hduoid].update_header()
             dt = datetime.datetime.utcnow()
             dtstr = ("{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}.{:03d}".
-                    format(dt.year, dt.month, dt.day, dt.hour, dt.minute,
+                     format(dt.year, dt.month, dt.day, dt.hour, dt.minute,
                             dt.second, int(dt.microsecond/1e3)))
             hdulisto[hduoid].add_checksum(dtstr)
 
-        #- write the output file
+        # write the output file
         hdulisto.writeto(optlist.result, overwrite=True)
-        hdulisto.close()
-        hdulist1.close()
-        hdulist2.close()
+        # hdulisto.close()
+        # hdulist1.close()
+        # hdulist2.close()
         exit(0)
 
     elif (op1_type == operandtypes['file'] and
           op2_type == operandtypes['number']):
-        print ""
+        print("")
         # get hdulist1
         #
         # create output hdulist/image -- verify filename etc.
@@ -226,18 +254,17 @@ def main():
         # write the output file
     elif (op1_type == operandtypes['number'] and
           op2_type == operandtypes['file']):
-        print ""
+        print("")
         # same as previous case, just swap operands
     elif (op1_type == operandtypes['number'] and
           op2_type == operandtypes['number']):
         # no putput file, just print the number
-        print "{}".format(scalc(float(optlist.operand1),
-                                float(optlist.operand2), optlist.op))
+        print("{}".format(scalc(float(optlist.operand1),
+                                float(optlist.operand2), optlist.op)))
         exit(0)
     else:
         logging.error("Invalid operands")
         exit(1)
-
 
 
 def ffcalc(arr1, arr2, op, reg):
@@ -260,17 +287,21 @@ def ffcalc(arr1, arr2, op, reg):
     arr3 = func(arr1, arr2)
     return arr3.astype('float32')
 
+
 def ffaddition(arg1, arg2):
     """add the args"""
     return arg1 + arg2
+
 
 def ffsubtract(arg1, arg2):
     """subtract the args"""
     return arg1 - arg2
 
+
 def ffmultiply(arg1, arg2):
     """multiply the args"""
     return arg1 * arg2
+
 
 def ffdivision(arg1, arg2):
     """divide arg1 by arg2 """
@@ -288,21 +319,26 @@ def scalc(opd1, opd2, op):
     func, arg1, arg2 = fmap[op]
     return func(arg1, arg2)
 
+
 def saddition(arg1, arg2):
     """add the args"""
     return arg1 + arg2
+
 
 def ssubtract(arg1, arg2):
     """subtract the args"""
     return arg1 - arg2
 
+
 def smultiply(arg1, arg2):
     """multiply the args"""
     return arg1 * arg2
 
+
 def sdivision(arg1, arg2):
     """divide arg1 by arg2 """
     return arg1 / arg2
+
 
 def get_operand_type(opstring):
     """validates operand string is either a filename or float(str)
@@ -318,38 +354,36 @@ def get_operand_type(opstring):
         return operandtypes['error']
     return operandtypes['number']
 
+
 def parse_region(reg):
     """return list with 2 slices for the region
     """
-    #- region = [x1:x2,y1,y2]
-    res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*", reg)
+    # region = [x1:x2,y1:y2]
+    res = re.match(r"\[*([0-9]*):([0-9]+),\s*([0-9]+):([0-9]+)\]*", reg)
     if res:
         (x1, x2, y1, y2) = res.groups()
-        return (slice(int(y1),int(y2)), slice(int(x1), int(x2)))
-    #- region = [*,y1:y2]
-    res = re.match(r"\[*(\*),([0-9]+):([0-9]+)\]*", reg)
+        return (slice(int(y1), int(y2)), slice(int(x1), int(x2)))
+    # region = [*,y1:y2]
+    res = re.match(r"\[*(\*),\s*([0-9]+):([0-9]+)\]*", reg)
     if res:
-        (x, y1, y2) = res.groups()
-        return (slice(int(y1),int(y2)), slice(None, None))
+        (x1, y1, y2) = res.groups()
+        return (slice(int(y1), int(y2)), slice(None, None))
     # reg = [x1:x2,*]
-    res = re.match(r"\[*([0-9]+):([0-9]+),(\*)\]*", reg)
+    res = re.match(r"\[*([0-9]+):([0-9]+),\s*(\*)\]*", reg)
     if res:
-        (x1, x2, y) = res.groups()
+        (x1, x2, y1) = res.groups()
         return (slice(None, None), slice(int(x1), int(x2)))
-    # reg = [*,*] #- redundant, but for completeness
-    res = re.match(r"\[*(\*),(\*)\]*", reg)
+    # reg = [*,*]  # redundant, but for completeness
+    res = re.match(r"\[*(\*),\s*(\*)\]*", reg)
     if res:
-        (x, y) = res.groups()
+        (x1, y1) = res.groups()
         return (slice(None, None), slice(None, None))
-    else:
-        emsg = "bad region spec {}, no match produced".\
-            format(reg)
-        logging.error(emsg)
-        exit(1)
-
-
+    # Getting to here means parsing failed
+    emsg = "bad region spec {}, no match produced".\
+        format(reg)
+    logging.error(emsg)
+    return (None, None)
 
 
 if __name__ == '__main__':
     main()
-

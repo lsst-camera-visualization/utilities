@@ -86,7 +86,7 @@ def header_print(opts, hdulist):
                     sep='\n', endcard=False, padding=False))
         else:
             # sorted by name (default)
-            for name, index in sorted(seglist.iteritems()):
+            for name, index in sorted(seglist.items()):
                 hdu = hdulist[index]
                 print("#--------{}---------".format(name))
                 print(hdu.header.tostring(
@@ -100,6 +100,7 @@ def header_print(opts, hdulist):
                 print(hdu.header.tostring(sep='\n',
                                           endcard=False, padding=False))
     hdulist.close()
+
 
 if __name__ == '__main__':
     main()

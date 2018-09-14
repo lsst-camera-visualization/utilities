@@ -109,7 +109,7 @@ def main():
         time.strftime("%a, %d %b %Y %H:%M:%S",
                       time.localtime(t2/1000))))
     # --- header line
-    (chanw, valuew, alarmw, unitw, statew, toffw) = (24, 9, 5, 8, 3, 4)
+    (chanw, valuew, alarmw, unitw, statew, toffw) = (30, 9, 5, 8, 3, 4)
     hdstr1 = "{:<{w1}s} {:>{w2}s}  {:>{w3}s}".format(
         "# Channel", "Value", "Alo", w1=chanw, w2=valuew, w3=alarmw)
     hdstr2 = " {:<{w1}s} {:{w2}s} {:{w3}s}  {:>{w4}s}".format(
