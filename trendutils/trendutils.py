@@ -108,7 +108,8 @@ def get_trending_server():
         requests.head("http://{}:8080".format(trending_server))
     except requests.ConnectionError as e:
         logging.error('ConnectionError: %s', e)
-        logging.error('check status of ssh tunnel to trending server')
+        logging.error('check status connection to trending server: %s',
+                      trending_server)
         return None
     return trending_server
 

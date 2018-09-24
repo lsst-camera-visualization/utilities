@@ -73,6 +73,9 @@ def main():
     if trending_server:
         data_url = "http://{}:8080/rest/data/dataserver".format(
             trending_server)
+    else:
+        logging.error('failed to contact trending server')
+        exit(1)
 
     # loop over input files containing 1 channel/line
     #

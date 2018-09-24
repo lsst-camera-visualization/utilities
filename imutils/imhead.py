@@ -30,7 +30,7 @@ def parse_args():
 def main():
     """print out headers"""
     optlist = parse_args()
-    # begin processing -- loop over files
+    # processing -- loop over files
     for ffile in optlist.fitsfile:
         try:
             hdulist = fits.open(ffile)
@@ -42,29 +42,34 @@ def main():
             hdulist.info()
         else:
             header_print(optlist, hdulist)
+        hdulist.close()
+        exit(0)
 
 
 def header_print(opts, hdulist):
     """print the headers according to the options
     """
+    text = []         # list to hold all the text to print at end
     seglist = {}      # dict to hold segment name, index as k,v
     otherlist = {}    # dict to hold non-image HDU's (except for primary)
     if opts.hduname:
         index = hdulist.index_of(opts.hduname)
         hdu = hdulist[index]
-        print("#--------{}---------".format(opts.hduname))
-        print(hdu.header.tostring(sep='\n', endcard=False, padding=False))
+        text.append("#--------{}---------".format(opts.hduname))
+        text.append(
+            hdu.header.tostring(sep='\n', endcard=False, padding=False))
     # print single hdu by index
     elif opts.hduindex:
         hdu = hdulist[opts.hduindex]
-        print("#--------extension {}---------".format(opts.hduindex))
-        print(hdu.header.tostring(sep='\n', endcard=False, padding=False))
+        text.append("#--------extension {}---------".format(opts.hduindex))
+        text.append(
+            hdu.header.tostring(sep='\n', endcard=False, padding=False))
     # print primary and Image headers, others optionally
     else:
         # build dicts etc. to facilitate processing
         for hdu in hdulist:
             index = hdulist.index_of(hdu.name)
-            if isinstance(hdu, fits.ImageHDU):
+            if isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
                 seglist[hdu.name] = index
             elif isinstance(hdu, fits.PrimaryHDU):
                 pindex = index
@@ -72,8 +77,9 @@ def header_print(opts, hdulist):
                 otherlist[hdu.name] = index
         # print the primary
         hdu = hdulist[pindex]
-        print("#--------{}---------".format(hdu.name))
-        print(hdu.header.tostring(sep='\n', endcard=False, padding=False))
+        text.append("#--------{}---------".format(hdu.name))
+        text.append(
+            hdu.header.tostring(sep='\n', endcard=False, padding=False))
         # print the Image headers
         if opts.unsorted:
             # in original index order
@@ -81,25 +87,29 @@ def header_print(opts, hdulist):
             ids = list(seglist.values())
             for index in sorted(ids):
                 hdu = hdulist[index]
-                print("#--------{}---------".format(hdu.name))
-                print(hdu.header.tostring(
+                text.append(hdu.header.tostring(
                     sep='\n', endcard=False, padding=False))
         else:
             # sorted by name (default)
             for name, index in sorted(seglist.items()):
                 hdu = hdulist[index]
-                print("#--------{}---------".format(name))
-                print(hdu.header.tostring(
+                text.append("#--------{}---------".format(name))
+                text.append(hdu.header.tostring(
                     sep='\n', endcard=False, padding=False))
         # print the other headers
         if opts.all:
             ids = list(otherlist.values())
             for index in sorted(ids):
                 hdu = hdulist[index]
-                print("#--------{}---------".format(hdu.name))
-                print(hdu.header.tostring(sep='\n',
-                                          endcard=False, padding=False))
+                text.append("#--------{}---------".format(hdu.name))
+                text.append(hdu.header.tostring(sep='\n',
+                                                endcard=False, padding=False))
     hdulist.close()
+    try:
+        print('%s', '\n'.join(text))
+    except IOError:
+        # A 'Broken pipe' IOError may occur when stdout is closed prematurely
+        pass
 
 
 if __name__ == '__main__':

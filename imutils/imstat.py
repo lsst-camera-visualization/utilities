@@ -10,6 +10,7 @@ import os.path
 from astropy.io import fits
 from astropy import stats
 import numpy as np
+import imutils as iu
 
 
 def parse_args():
@@ -65,112 +66,37 @@ def main():
             exit(1)
         if optlist.info:  # just print the image info and exit
             hdulist.info()
-            exit(0)
-        elif not optlist.noheadings:  # print filename
+            continue
+        if not optlist.noheadings:  # print filename
             print("#")
             print("# {}".format(os.path.basename(ffile)))
+        # Construct a list of the HDU's to work on
+        hduids = iu.get_hduids(optlist, hdulist)
         if optlist.quicklook:
-            quicklook(optlist, hdulist)
+            quicklook(optlist, hduids, hdulist)
         else:
-            stats_proc(optlist, hdulist)
-        ncalls.counter = 0
+            stats_proc(optlist, hduids, hdulist)
+        ncalls.counter = 0  # reset per file, triggers headers
 
 
-def stats_proc(optlist, hdulist):
+def stats_proc(optlist, hduids, hdulist):
     """print statistics for region according to options
     """
-    hduids = []  # make a list of HDU ids to work on)
-    if optlist.hduname:
-        for hduname in optlist.hduname:
-            try:
-                hduids.append(hdulist.index_of(hduname))
-            except KeyError as ke:
-                emsg = "KeyError: {}".format(ke)
-                logging.error(emsg)
-                exit(1)
-
-    elif optlist.hduindex:
-        hduids = optlist.hduindex
-    else:  # all segments)
-        for hdu in hdulist:
-            if isinstance(hdu, fits.PrimaryHDU):
-                if np.shape(hdu.data):
-                    logging.debug('adding %s with index %d to hduid list',
-                                  hdu.name, hdulist.index_of(hdu.name))
-                    hduids.append(hdulist.index_of(hdu.name))
-            elif isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
-                logging.debug('adding %s with index %d to hduid list',
-                              hdu.name, hdulist.index_of(hdu.name))
-                hduids.append(hdulist.index_of(hdu.name))
-            else:
-                logging.debug('%s with index %d is not type (Comp)ImageHDU',
-                              hdu.name, hdulist.index_of(hdu.name))
-
-
-    for hduid in hduids:  # process each with optional region
+    # Process each HDU in the list "hduids"
+    for hduid in hduids:
         pix = hdulist[hduid].data
         name = hdulist[hduid].name
-        reg = ""
-        if not optlist.region:
-            stats_print(optlist, hduid, name, pix, reg)
-        else:
-            for reg in optlist.region:
-                res = re.match(
-                    r"\[*([0-9]*):([0-9]+),\s*([0-9]+):([0-9]+)\]*",
-                    reg)
-                if res:
-                    (x1, x2, y1, y2) = res.groups()
+        if optlist.region:
+            for reg in optlist.region:  # if there are regions
+                logging.debug('processing %s', reg)
+                slice_spec = iu.parse_region(reg)
+                if slice_spec:
                     stats_print(optlist, hduid, name,
-                                pix[int(y1)-1:int(y2),
-                                    int(x1)-1:int(x2)], reg)
-                    continue
-                # reg = [x0,y1:y2] -- single column)
-                res = re.match(r"\[*([0-9]+),\s*([0-9]+):([0-9]+)\]*",
-                               reg)
-                if res:
-                    (x0, y1, y2) = res.groups()
-                    stats_print(optlist, hduid, name,
-                                pix[int(y1)-1:int(y2), int(x0)-1], reg)
-                    continue
-                # reg = [*,y1:y2])
-                res = re.match(r"\[*(\*),\s*([0-9]+):([0-9]+)\]*", reg)
-                if res:
-                    (x, y1, y2) = res.groups()
-                    stats_print(optlist, hduid, name,
-                                pix[int(y1)-1:int(y2), :], reg)
-                    continue
-                # reg = [x0,y0] -- single pixel
-                res = re.match(r"\[*([0-9]+),\s*([0-9]+)\]*", reg)
-                if res:
-                    (x0, y0) = res.groups()
-                    stats_print(optlist, hduid, name,
-                                pix[int(y0)-1, int(x0)-1], reg)
-                    continue
-                # reg = [x1:x2,y0] -- single row
-                res = re.match(r"\[*([0-9]+):([0-9]+),\s*([0-9]+)\]*", reg)
-                if res:
-                    (x1, x2, y0) = res.groups()
-                    stats_print(optlist, hduid, name,
-                                pix[int(y0)-1, int(x1)-1:int(x2)], reg)
-                    continue
-                # reg = [x1:x2,*]
-                res = re.match(r"\[*([0-9]+):([0-9]+),\s*(\*)\]*", reg)
-                if res:
-                    (x1, x2, y) = res.groups()
-                    stats_print(optlist, hduid, name,
-                                pix[:, int(x1)-1:int(x2)], reg)
-                    continue
-                # reg = [*,*] # redundant, but for completeness)
-                res = re.match(r"\[*(\*),\s*(\*)\]*", reg)
-                if res:
-                    (x, y) = res.groups()
-                    stats_print(optlist, hduid, name, pix[:, :], reg)
-                    continue
+                                pix[slice_spec], reg)
                 else:
-                    emsg = "bad region spec {}, no match produced".\
-                        format(reg)
-                    logging.error(emsg)
-                    exit(1)
+                    logging.error('skipping')
+        else:
+            stats_print(optlist, hduid, name, pix, None)
 
 
 def stats_print(optlist, sid, name, buf, reg):
@@ -185,7 +111,7 @@ def stats_print(optlist, sid, name, buf, reg):
         if "median" in optlist.stats:
             print("{:>9s}".format("median"), end="")
         if "stddev" in optlist.stats:
-            print("{:>7s}".format("stddev"), end="")
+            print("{:>8s}".format("stddev"), end="")
         if "min" in optlist.stats:
             print("{:>7s}".format("min"), end="")
         if "max" in optlist.stats:
@@ -202,18 +128,19 @@ def stats_print(optlist, sid, name, buf, reg):
     if "median" in optlist.stats:
         print("{:>9g}".format(np.median(buf)), end="")
     if "stddev" in optlist.stats:
-        print("{:>7.2g}".format(np.std(buf)), end="")
+        print("{:>8.2g}".format(np.std(buf)), end="")
     if "min" in optlist.stats:
         print("{:>7g}".format(np.min(buf)), end="")
     if "max" in optlist.stats:
         print("{:>7g}".format(np.max(buf)), end="")
     if reg:
+        reg = re.sub(r"^\[*([^\]]*)\]*$", r"\1", reg)
         print(" {:20s}".format(reg), end="")
     print("")  # newline)
     ncalls()  # track call count, acts like static variable)
 
 
-def quicklook(optlist, hdulist):
+def quicklook(optlist, hduids, hdulist):
     """print quicklook for hdu according to options
     """
     hdr = hdulist[0].header
@@ -225,27 +152,6 @@ def quicklook(optlist, hdulist):
         emsg = "adu/sec won't be available"
         logging.warn(emsg)
         expt = 0.0
-    hduids = []  # ids of hdus to operate on)
-    if optlist.hduname:
-        for hduname in optlist.hduname:
-            hduids.append(hdulist.index_of(hduname))
-    elif optlist.hduindex:
-        hduids = optlist.hduindex
-    else:  # all segments)
-        for hdu in hdulist:
-            if isinstance(hdu, fits.PrimaryHDU):
-                if np.shape(hdu.data):
-                    logging.debug('adding %s with index %d to hduid list',
-                                  hdu.name, hdulist.index_of(hdu.name))
-                    hduids.append(hdulist.index_of(hdu.name))
-            elif isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
-                logging.debug('adding %s with index %d to hduid list',
-                              hdu.name, hdulist.index_of(hdu.name))
-                hduids.append(hdulist.index_of(hdu.name))
-            else:
-                logging.debug('%s with index %d is not type (Comp)ImageHDU',
-                              hdu.name, hdulist.index_of(hdu.name))
-
 
     for hduid in hduids:
         # get header details to extract signal, bias regions)
@@ -259,7 +165,7 @@ def quicklook(optlist, hdulist):
             logging.error('KeyError: %s, required for quicklook mode', ke)
             exit(1)
         logging.debug('DATASEC=%s', dstr)
-        res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
+        res = re.match(r"\[?([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]?",
                        dstr)
         if res:
             datasec = res.groups()
