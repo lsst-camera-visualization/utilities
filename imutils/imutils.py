@@ -78,7 +78,7 @@ def get_hduids(optlist, hdulist):
 
     elif optlist.hduindex:
         hduids = optlist.hduindex
-    else:  # all segments)
+    else:  # all segments with pixel data
         for hdu in hdulist:
             if isinstance(hdu, fits.PrimaryHDU):
                 if np.shape(hdu.data):
