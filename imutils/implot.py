@@ -25,7 +25,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent('''\
-        Line plots of row/column regions"
+        Line plots of row/column regions
                                     '''),
         epilog=textwrap.dedent('''\
         For each file a plot is produced yielding a grid of plots
