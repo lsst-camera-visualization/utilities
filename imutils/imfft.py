@@ -3,17 +3,13 @@
 Compute noise power spectrum for fits file images
 """
 
-import sys
 import re
 import argparse
 import logging
 import textwrap
-import datetime
-from string import join
-import os.path
-from astropy.io import fits
 import numpy as np
 from scipy import signal
+from astropy.io import fits
 from astropy.stats import sigma_clip
 import matplotlib.pyplot as plt
 
