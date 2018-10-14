@@ -36,6 +36,7 @@ def parse_args():
         clipped median on the other axis from the plot.  That is for a
         row plot, each column of the region is mapped to a scalar.
         The "--bias" option provides bias subtraction.
+        Note a "--" is often needed to indicate the end of options.
                                 '''))
     parser.add_argument("fitsfile", nargs='+',
                         metavar="file", help="input fits file(s)")
@@ -146,7 +147,7 @@ def main():
             logging.debug("using title=%s", optlist.title)
             fig.suptitle("{}".format(optlist.title))
 
-    # begin processing -- loop over rows, cols
+    # begin processing -- loop over rows, cols of figure
     fcnt = 0
     for prow in range(nprows):
         for pcol in range(npcols):

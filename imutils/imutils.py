@@ -64,14 +64,15 @@ def parse_region(reg):
 
 
 def get_hduids(optlist, hdulist):
-    """ return a list of hduids requested in optlist or all by default
+    """ return a list of hduids requested in optlist or all by default.
+    check that they exist in hdulist and have data
     """
-    # Construct a list, "hduids" of the HDU's to work on
-    hduids = []
+    # Construct a list of candidate HDUs to work on
+    chduids = []  # list of candidate hduids
     if optlist.hduname:
         for hduname in optlist.hduname:
             try:
-                hduids.append(hdulist.index_of(hduname))
+                chduids.append(hdulist.index_of(hduname))
             except KeyError as ke:
                 logging.error('KeyError: %s', ke)
                 logging.error('HDU[%s] not found, skipping', hduname)
@@ -79,36 +80,40 @@ def get_hduids(optlist, hdulist):
         for hduid in optlist.hduindex:
             try:
                 hdu = hdulist[hduid]
-                if np.shape(hdu.data):
-                    hduids.append(hduid)
-                else:
-                    logging.error(
-                        'HDU[%d] has no \".data\" member, skipping',
-                        hduid)
+                chduids.append(hduid)
             except IndexError:
                 logging.error('HDU[%d] not found, skipping', hduid)
     else:  # all segments with pixel data
         for hdu in hdulist:
-            if isinstance(hdu, fits.PrimaryHDU):
-                if np.shape(hdu.data):
-                    logging.debug('adding %s with index %d to hduid list',
-                                  hdu.name, hdulist.index_of(hdu.name))
-                    hduids.append(hdulist.index_of(hdu.name))
-            elif isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
+            chduids.append(hdulist.index(hdu))
+
+    # Validate the list of candidate HDUs
+    hduids = []
+    for hduid in chduids:
+        hdu = hdulist[hduid]
+        if isinstance(hdu, fits.PrimaryHDU):
+            if np.shape(hdu.data):
                 logging.debug('adding %s with index %d to hduid list',
                               hdu.name, hdulist.index_of(hdu.name))
-                hduids.append(hdulist.index_of(hdu.name))
-            else:
-                logging.debug('%s with index %d is not type (Comp)ImageHDU',
-                              hdu.name, hdulist.index_of(hdu.name))
-    if len(hduids):
+                hduids.append(hduid)
+        elif isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
+            logging.debug('adding %s with index %d to hduid list',
+                          hdu.name, hdulist.index_of(hdu.name))
+            hduids.append(hdulist.index_of(hdu.name))
+        else:
+            logging.debug('%s with index %d is not type (Comp)ImageHDU',
+                          hdu.name, hdulist.index_of(hdu.name))
+    if hduids:
         return hduids
-    else:
-        return None
+    return None
 
 
 def subtract_bias(optlist, hduids, hdulist):
     """
+    Subtract a bias (column or const) from the hdus in hduids.
+    Choices are mean, median or byrow subtraction of a bias calculated
+    in either a given set of columns or using DATASEC to infer the
+    overscan region.
     """
     logging.debug('processing bias subtraction')
     for hduid in hduids:  # process each with regions
