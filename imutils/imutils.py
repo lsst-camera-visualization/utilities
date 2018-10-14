@@ -73,12 +73,20 @@ def get_hduids(optlist, hdulist):
             try:
                 hduids.append(hdulist.index_of(hduname))
             except KeyError as ke:
-                emsg = "KeyError: {}".format(ke)
-                logging.error(emsg)
-                return None
-
+                logging.error('KeyError: %s', ke)
+                logging.error('HDU[%s] not found, skipping', hduname)
     elif optlist.hduindex:
-        hduids = optlist.hduindex
+        for hduid in optlist.hduindex:
+            try:
+                hdu = hdulist[hduid]
+                if np.shape(hdu.data):
+                    hduids.append(hduid)
+                else:
+                    logging.error(
+                        'HDU[%d] has no \".data\" member, skipping',
+                        hduid)
+            except IndexError:
+                logging.error('HDU[%d] not found, skipping', hduid)
     else:  # all segments with pixel data
         for hdu in hdulist:
             if isinstance(hdu, fits.PrimaryHDU):
@@ -93,7 +101,10 @@ def get_hduids(optlist, hdulist):
             else:
                 logging.debug('%s with index %d is not type (Comp)ImageHDU',
                               hdu.name, hdulist.index_of(hdu.name))
-    return hduids
+    if len(hduids):
+        return hduids
+    else:
+        return None
 
 
 def subtract_bias(optlist, hduids, hdulist):
