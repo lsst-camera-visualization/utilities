@@ -12,6 +12,8 @@ from scipy import signal
 from astropy.io import fits
 from astropy.stats import sigma_clip
 import matplotlib.pyplot as plt
+import imutils as iu
+
 
 def parse_args():
     """handle command line"""
@@ -51,14 +53,14 @@ def main():
         logging.basicConfig(format='%(levelname)s: %(message)s',
                             level=logging.INFO)
     if optlist.scaling == 'density':
-        window='boxcar'
+        window = 'boxcar'
     else:
-        window='flattop'
+        window = 'flattop'
 
-    #- Open files
+    # Open files
     fileno = 0
     hduids = []
-    #- loop over files
+    # loop over files
     for ffile in optlist.fitsfile:
         try:
             hdulist = fits.open(ffile)
@@ -66,14 +68,13 @@ def main():
             emsg = "IOError: {}".format(ioerr)
             logging.error(emsg)
             exit(1)
-        if optlist.hduindex:
-            hduids = optlist.hduindex
-        else: #- all segments
-            for hdu in hdulist:
-                if isinstance(hdu, fits.ImageHDU):
-                    hduids.append(hdulist.index_of(hdu.name))
+        if optlist.info:  # just print the image info and exit
+            hdulist.info()
+            continue
+        # Construct a list of the HDU's to work on
+        hduids = iu.get_hduids(optlist, hdulist)
 
-        #- loop over hdu's
+        # loop over hdu's
         hducnt = 0
         for hduid in hduids:
             hdr = hdulist[hduid].header
@@ -86,7 +87,7 @@ def main():
             debugmsg = "DATASEC={}".format(dstr)
             logging.debug(debugmsg)
             res = re.match(r"\[*([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]*",
-                dstr)
+                           dstr)
             if res:
                 datasec = res.groups()
             else:
@@ -94,22 +95,21 @@ def main():
                 logging.error(emsg)
                 exit(1)
 
-            naxis1 = int(hdr['NAXIS1'])
-            naxis2 = int(hdr['NAXIS2'])
-            #- define region to measure signal level
+            # define region to measure
             x1 = int(datasec[0]) - 1
             x2 = int(datasec[1])
-            y1 = int(datasec[2]) - 1
-            y2 = int(datasec[3])
+            # y1 = int(datasec[2]) - 1
+            # y2 = int(datasec[3])
 
-            naxis1 = hdr['NAXIS1']
-            naxis2 = hdr['NAXIS2']
-            stddev = hdr['STDVBIAS']
+            # naxis1 = int(hdr['NAXIS1'])
+            # naxis2 = int(hdr['NAXIS2'])
+            stddev = float(hdr['STDVBIAS'])
             pix = hdulist[hduid].data
             fs = 1.0/(optlist.rt*1e-9)
-            #- measure the size needed
+            # measure the size needed
             arr = pix[optlist.row, x1:x2]
-            x, p = signal.periodogram(arr, fs, window, scaling=optlist.scaling )
+            x, p = signal.periodogram(arr, fs, window,
+                                      scaling=optlist.scaling)
             flen = x.size
             plen = p.size
             if flen != plen:
@@ -117,6 +117,7 @@ def main():
                 emsg = "DATASEC:{} parsing failed".format(dstr)
                 logging.error(emsg)
                 exit(1)
+            # now do the real calculation
             f = np.empty((optlist.nrows, flen))
             Pxx_den = np.empty((optlist.nrows, plen))
             for rr in range(0, optlist.nrows):
@@ -124,11 +125,12 @@ def main():
                 if optlist.clip:
                     amed = np.median(arr)
                     farr = sigma_clip(arr)
-                    x, p = signal.periodogram(farr.filled(amed), fs,
-                                  window, scaling=optlist.scaling )
+                    x, p = signal.periodogram(farr.filled(amed),
+                                              fs, window,
+                                              scaling=optlist.scaling)
                 else:
-                    x, p = signal.periodogram(arr, fs,
-                                  window, scaling=optlist.scaling )
+                    x, p = signal.periodogram(arr, fs, window,
+                                              scaling=optlist.scaling)
                 f[rr] = x
                 Pxx_den[rr] = p
 
@@ -153,11 +155,12 @@ def main():
                     logging.debug(debugmsg)
 
             plt.semilogy(f_avg, Pxx_den_avg,
-                label="{}:{:>02d}:{:>7.2f}".format(fileno, hduid, stddev))
+                         label="{}:{:>02d}:{:>7.2f}".format(
+                             fileno, hduid, stddev))
             hducnt += 1
-            #- end loop over hdui's
+            # end loop over hdui's
         fileno += 1
-        #- end loop over files
+        # end loop over files
     #
     plt.ylim([0.8*pmin, 1.2*pmax])
     plt.xlabel('freqquency [Hz]')
@@ -166,10 +169,9 @@ def main():
     else:
         plt.ylabel('Linear spectrum [V RMS]')
     plt.grid(True)
-    plt.legend(fontsize='xx-small',title='File:HDUi RN')
+    plt.legend(fontsize='xx-small', title='File:HDUi RN')
     plt.show()
 
 
 if __name__ == '__main__':
     main()
-

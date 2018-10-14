@@ -6,6 +6,7 @@ Calculate statistical results for FITS images
 import re
 import argparse
 import logging
+import textwrap
 import os.path
 from astropy.io import fits
 from astropy import stats
@@ -16,9 +17,36 @@ import imutils as iu
 def parse_args():
     """handle command line"""
     parser = argparse.ArgumentParser(
-        description="Calculate statistical quantities for image")
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=textwrap.dedent('''\
+            Calculate statistical quantities for image")
+                                    '''),
+        epilog=textwrap.dedent('''\
+                               '''))
     parser.add_argument("fitsfile", nargs='+',
                         metavar="file", help="input fits file(s)")
+    parser.add_argument("--quicklook", action='store_true',
+                        help="estimate signal, noise, counts/sec in adus")
+    sgroup = parser.add_argument_group("stats", "select statistics and regions"
+                                       " (exclusive of quicklook)")
+    sgroup.add_argument("--region", nargs='+', metavar='reg',
+                        help="region fmt: \"x1:x2,y1:y2\",")
+    sgroup.add_argument("--stats", nargs='+', metavar='stat',
+                        help="select: mean median stddev min max")
+    sgroup.add_argument("--bias", nargs='?', metavar='cols', const='overscan',
+                        help="subtract bias, fmt: \"x1:x2\"")
+    sgroup.add_argument("--btype", choices=['mean', 'median', 'byrow'],
+                        help="bias subtract by-row (def) or constant",
+                        default='byrow')
+    hgroup = parser.add_mutually_exclusive_group()
+    hgroup.add_argument("--hduname", nargs='+',
+                        metavar='idn', help="process HDU list by names")
+    hgroup.add_argument("--hduindex", nargs='+', type=int,
+                        metavar='idx', help="process HDU list by ids")
+    parser.add_argument("--tearing", action='store_true',
+                        help="add tearing metric to quicklook output")
+    parser.add_argument("--dipoles", action='store_true',
+                        help="add dipole metric to quicklook output")
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
     parser.add_argument("--debug", action='store_true',
@@ -26,23 +54,6 @@ def parse_args():
     parser.add_argument("--noheadings", action='store_true',
                         default=False,
                         help="Don't print column heads for stats")
-    hgroup = parser.add_mutually_exclusive_group()
-    hgroup.add_argument("--hduname", nargs='+',
-                        metavar='idn', help="process HDU list by names")
-    hgroup.add_argument("--hduindex", nargs='+', type=int,
-                        metavar='idx', help="process HDU list by ids")
-    sgroup = parser.add_argument_group("stats", "select statistics and regions"
-                                       " (exclusive of quicklook)")
-    sgroup.add_argument("--region", nargs='+', metavar='reg',
-                        help="region fmt: \"x1:x2,y1:y2\",")
-    sgroup.add_argument("--stats", nargs='+', metavar='stat',
-                        help="select: mean median stddev min max")
-    parser.add_argument("--quicklook", action='store_true',
-                        help="estimate signal, noise, counts/sec in adus")
-    parser.add_argument("--tearing", action='store_true',
-                        help="add tearing metric to quicklook output")
-    parser.add_argument("--dipoles", action='store_true',
-                        help="add dipole metric to quicklook output")
     return parser.parse_args()
 
 
@@ -75,6 +86,8 @@ def main():
         if optlist.quicklook:
             quicklook(optlist, hduids, hdulist)
         else:
+            if optlist.bias:
+                iu.subtract_bias(optlist, hduids, hdulist)
             stats_proc(optlist, hduids, hdulist)
         ncalls.counter = 0  # reset per file, triggers headers
 
@@ -107,15 +120,15 @@ def stats_print(optlist, sid, name, buf, reg):
     if not optlist.noheadings and ncalls.counter == 0:
         print("#{:>3s} {:>9s}".format("id", "HDUname"), end="")
         if "mean" in optlist.stats:
-            print("{:>9s}".format("mean"), end="")
+            print(" {:>8s}".format("mean"), end="")
         if "median" in optlist.stats:
-            print("{:>9s}".format("median"), end="")
+            print(" {:>8s}".format("median"), end="")
         if "stddev" in optlist.stats:
-            print("{:>8s}".format("stddev"), end="")
+            print(" {:>7s}".format("stddev"), end="")
         if "min" in optlist.stats:
-            print("{:>7s}".format("min"), end="")
+            print(" {:>7s}".format("min"), end="")
         if "max" in optlist.stats:
-            print("{:>7s}".format("max"), end="")
+            print(" {:>7s}".format("max"), end="")
         if reg:
             print(" {:20s}".format("region"), end="")
         print("")  # newline)
@@ -124,15 +137,15 @@ def stats_print(optlist, sid, name, buf, reg):
         print(" {:3d} {:>9s}".format(sid, name), end="")
 
     if "mean" in optlist.stats:
-        print("{:>9g}".format(np.mean(buf)), end="")
+        print(" {:>8g}".format(np.mean(buf)), end="")
     if "median" in optlist.stats:
-        print("{:>9g}".format(np.median(buf)), end="")
+        print(" {:>8g}".format(np.median(buf)), end="")
     if "stddev" in optlist.stats:
-        print("{:>8.2g}".format(np.std(buf)), end="")
+        print(" {:>7.2g}".format(np.std(buf)), end="")
     if "min" in optlist.stats:
-        print("{:>7g}".format(np.min(buf)), end="")
+        print(" {:>7g}".format(np.min(buf)), end="")
     if "max" in optlist.stats:
-        print("{:>7g}".format(np.max(buf)), end="")
+        print(" {:>7g}".format(np.max(buf)), end="")
     if reg:
         reg = re.sub(r"^\[*([^\]]*)\]*$", r"\1", reg)
         print(" {:20s}".format(reg), end="")
