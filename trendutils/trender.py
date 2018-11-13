@@ -499,10 +499,11 @@ def main():
             # x = chandata[chid]['tstamp'][(tstamp > tmin) & (tstamp < tmax)]
             # y = chandata[chid]['value'][(tstamp > tmin) & (tstamp < tmax)]
             x = Time(tstamp, format='unix')
-            logging.debug('x[0]= %f x[20]= %f',x[0].plot_date,x[20].plot_date)
+            logging.debug('x[0]= %f x[-1]= %f',x[0].plot_date,x[-1].plot_date)
             # x = chandata[chid]['tstamp']
             y = chandata[chid]['value']
-            ax.plot_date(x.plot_date, y, '.-', label="{}".format(chanspec[chid]['path']))
+            # ax.plot_date(x.plot_date, y, '.-', label="{}".format(chanspec[chid]['path']))
+            ax.plot_date(x.plot_date, y, label="{}".format(chanspec[chid]['path']))
 
     plt.show()
 
