@@ -21,7 +21,7 @@ def deltamtime(pathname):
 
 
 def get_all_channels():
-    """pulls all the channels
+    """pulls all the channels from rest server
     """
     trending_server = get_trending_server()
     if not trending_server:
@@ -55,20 +55,23 @@ def parse_datestr(datestr):
     return ts
 
 
-def get_time_interval(startstr, stopstr):
+def get_time_interval(startstr, stopstr, duration=600):
     """return the timeinterval boundaries (ms) from datestrings
     """
-    t1 = parse_datestr(startstr)
-    if t1:
+    if startstr:
+        t1 = parse_datestr(startstr)
         logging.debug('t1 as localtime: %s', time.strftime(
             "%a, %d %b %Y %H:%M:%S", time.localtime(t1)))
         t1 *= 1000
 
-    t2 = parse_datestr(stopstr)
-    if t2:
+    if stopstr:
+        t2 = parse_datestr(stopstr)
         logging.debug('t2 as localtime: %s', time.strftime(
             "%a, %d %b %Y %H:%M:%S", time.localtime(t2)))
         t2 *= 1000
+
+    if not duration:
+        duration = 600
 
     # cases for t1, t2
     if startstr and stopstr:
@@ -76,12 +79,13 @@ def get_time_interval(startstr, stopstr):
             logging.error('starttime must be earlier than stop')
             t1 = None
             t2 = None
-    elif startstr and not stopstr:  # get 300s interval
-        t2 = t1 + 300*1000
-    elif not startstr and stopstr:  # get 300s interval
-        t1 = t2 - 300*1000
+    elif startstr and not stopstr:  # get durations interval
+        t2 = t1 + duration*1000
+    elif not startstr and stopstr:  # get durations interval
+        t1 = t2 - duration*1000
     elif not startstr and not stopstr:
-        t1 = t2 - 300*1000
+        t2 = int(time.time())
+        t1 = t2 - duration*1000
     else:
         t1 = t2 = None
 

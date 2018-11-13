@@ -32,12 +32,18 @@ def parse_args():
                         default=10, type=int)
     parser.add_argument("--nrows", help="number of rows to average",
                         default=1, type=int)
-    parser.add_argument("--hduindex", nargs='+', type=int,
+    # hdu name|index exclusive
+    hgroup = parser.add_mutually_exclusive_group()
+    hgroup.add_argument("--hduname", nargs='+',
+                        metavar='idn', help="process HDU list by names")
+    hgroup.add_argument("--hduindex", nargs='+', type=int,
                         metavar='idx', help="process HDU list by ids")
     parser.add_argument("--scaling", choices=['density', 'spectrum'],
                         default='density', help="")
     parser.add_argument("--clip", action='store_true',
                         help="apply sigma (3) clip to rows used")
+    parser.add_argument("--info", action='store_true',
+                        help="print the info() table summarizing file")
     parser.add_argument("--debug", action='store_true',
                         help="print additional debugging messages")
     return parser.parse_args()

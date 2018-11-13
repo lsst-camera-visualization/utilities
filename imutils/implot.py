@@ -283,9 +283,9 @@ def plot_hdus(optlist, hduids, hdulist, ax):
             name = "{}".format(hduid)
         reg = ""
         if optlist.row:
-            map_axis = 0  # first axis (y) concerts to scalar
+            map_axis = 0  # first axis (y) converts to scalar
         elif optlist.col:
-            map_axis = 1  # second axis (y) concerts to scalar
+            map_axis = 1  # second axis (y) converts to scalar
         else:
             exit(1)
 
