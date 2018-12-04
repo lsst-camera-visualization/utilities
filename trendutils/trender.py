@@ -428,6 +428,9 @@ def main():
     if optlist.text:
         # print a header for the text
         #
+        print("#")
+        print("# {}".format(optlist.title))
+        print("#")
         print("# CCS trending dump at {}".format(
             dt.datetime.now(gettz()).isoformat(timespec='seconds')))
         print("# Data for {} total seconds from {} intervals".format(
@@ -464,6 +467,9 @@ def main():
     if optlist.stats:
         # print a header for the stats
         #
+        print("#")
+        print("# {}".format(optlist.title))
+        print("#")
         print("# CCS trending stats at {}".format(
             dt.datetime.now(gettz()).isoformat(timespec='seconds')))
         print("# Data for {} total seconds from {} intervals".format(
