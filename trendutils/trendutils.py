@@ -5,13 +5,16 @@ import collections
 import os.path
 import time
 import stat
+from datetime import datetime
 import requests
 from lxml import etree
 import dateutil.parser as dp
+from dateutil import tz
 
-# constants? for lack of a better term
-slacnetworkre = r"134\.79\.[0-9]*\.[0-9]*"
-slac_trending_server = "lsst-mcm.slac.stanford.edu"
+# constants? for lack of a better term (default to slac)
+trendnetre = r"134\.79\.[0-9]*\.[0-9]*"
+default_trending_server = "lsst-mcm.slac.stanford.edu"
+tz_trending = 'America/Los_Angeles'
 
 
 def deltamtime(pathname):
@@ -37,22 +40,26 @@ def get_all_channels():
 def parse_datestr(datestr):
     """parse date string to return time in seconds
        or now if the string is None
+       The tz_trending timezone specification is used
     """
     if datestr:  # parse the date string almost any format
         logging.debug('datestr=%s', datestr)
-        pt = dp.parse(datestr)
-        if not pt.tzinfo:               # no time zone in string
-            ts = int(time.mktime(pt.timetuple()))
-        elif pt.tzinfo and pt.tzname():  # tz name defined
-            ts = int(time.mktime(pt.timetuple()))
-        elif pt.tzinfo and not pt.tzname():  # tz name not defined
-            ts = int(time.mktime(pt.timetuple())) - 3600*time.daylight
-        else:
+        try:
+            dt = dp.parse(datestr)
+        except ValueError as e:
+            logging.error('ValueError: %s', e)
             logging.error('could not parse the datestring')
-            ts = None
+            return None
+
+        if not dt.tzinfo:  # no time zone, attach tz_trending
+            dt = dt.replace(tzinfo=tz.gettz(tz_trending))  # default
+
+        # convert timezone to tz_trending
+        dt = dt.astimezone(tz.gettz(tz_trending))
     else:
-        ts = int(time.time())  # right now
-    return ts
+        dt = datetime.now(tz=tz.gettz(tz_trending))
+
+    return (dt - datetime(1970, 1, 1, tzinfo=tz.UTC)).total_seconds()
 
 
 def get_time_interval(startstr, stopstr, duration=600):
@@ -60,14 +67,14 @@ def get_time_interval(startstr, stopstr, duration=600):
     """
     if startstr:
         t1 = parse_datestr(startstr)
-        logging.debug('t1 as localtime: %s', time.strftime(
-            "%a, %d %b %Y %H:%M:%S", time.localtime(t1)))
+        logging.debug('t1 as trending db local time: %s',
+                      datetime.fromtimestamp(t1, tz.gettz(tz_trending)))
         t1 *= 1000
 
     if stopstr:
         t2 = parse_datestr(stopstr)
-        logging.debug('t2 as localtime: %s', time.strftime(
-            "%a, %d %b %Y %H:%M:%S", time.localtime(t2)))
+        logging.debug('t2 as trending db local time: %s',
+                      datetime.fromtimestamp(t2, tz.gettz(tz_trending)))
         t2 *= 1000
 
     if not duration:
@@ -84,7 +91,7 @@ def get_time_interval(startstr, stopstr, duration=600):
     elif not startstr and stopstr:  # get durations interval
         t1 = t2 - duration*1000
     elif not startstr and not stopstr:
-        t2 = int(time.time())
+        t2 = int(time.time()) * 1000
         t1 = t2 - duration*1000
     else:
         t1 = t2 = None
@@ -99,13 +106,13 @@ def get_trending_server():
     """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
-    res = re.search(slacnetworkre, s.getsockname()[0])
+    res = re.search(trendnetre, s.getsockname()[0])
     if res:
-        trending_server = slac_trending_server
+        trending_server = default_trending_server
         logging.debug('on SLAC network: trending server is lsst-mcm')
     else:
         trending_server = "localhost"
-        logging.debug('off SLAC network: trending server is localhost')
+        logging.debug('outside trending network: trending server is localhost')
     # test connection to trending server, just get head to verify
     #
     try:

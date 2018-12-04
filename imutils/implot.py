@@ -240,7 +240,7 @@ def main():
                 if nfiles == 1 or optlist.overlay:
                     # if np.size(hduids) < 4:
                     logging.debug('ncalls.counter= %d', ncalls.counter)
-                    if ncalls.counter < 4:  # inside the plot box
+                    if len(handles) < 4:  # inside the plot box
                         ax.legend(handles, labels, loc='best',
                                   fontsize='small', title='HDU:Region')
                     else:  # outside at upper right
