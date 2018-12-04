@@ -48,7 +48,7 @@ def main():
     if t2 is None:
         logging.error("Date assignment failed...exiting")
         exit(1)
-    t2 *= 1000  # convert to ms
+    t2 = int(t2 * 1000)  # convert to ms
     t1 = t2 - 20*1000
     logging.debug('time interval: %d -- %d (%d sec)', t1, t2, (t2-t1)/1000)
 

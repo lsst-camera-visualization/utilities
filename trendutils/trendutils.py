@@ -9,7 +9,8 @@ from datetime import datetime
 import requests
 from lxml import etree
 import dateutil.parser as dp
-from dateutil import tz
+from dateutil.tz import gettz
+from dateutil.tz import tzutc
 
 # constants? for lack of a better term (default to slac)
 trendnetre = r"134\.79\.[0-9]*\.[0-9]*"
@@ -52,14 +53,14 @@ def parse_datestr(datestr):
             return None
 
         if not dt.tzinfo:  # no time zone, attach tz_trending
-            dt = dt.replace(tzinfo=tz.gettz(tz_trending))  # default
+            dt = dt.replace(tzinfo=gettz(tz_trending))  # default
 
         # convert timezone to tz_trending
-        dt = dt.astimezone(tz.gettz(tz_trending))
+        dt = dt.astimezone(gettz(tz_trending))
     else:
-        dt = datetime.now(tz=tz.gettz(tz_trending))
+        dt = datetime.now(tz=gettz(tz_trending))
 
-    return (dt - datetime(1970, 1, 1, tzinfo=tz.UTC)).total_seconds()
+    return (dt - datetime(1970, 1, 1, tzinfo=tzutc())).total_seconds()
 
 
 def get_time_interval(startstr, stopstr, duration=600):
@@ -68,13 +69,13 @@ def get_time_interval(startstr, stopstr, duration=600):
     if startstr:
         t1 = parse_datestr(startstr)
         logging.debug('t1 as trending db local time: %s',
-                      datetime.fromtimestamp(t1, tz.gettz(tz_trending)))
+                      datetime.fromtimestamp(t1, gettz(tz_trending)))
         t1 *= 1000
 
     if stopstr:
         t2 = parse_datestr(stopstr)
         logging.debug('t2 as trending db local time: %s',
-                      datetime.fromtimestamp(t2, tz.gettz(tz_trending)))
+                      datetime.fromtimestamp(t2, gettz(tz_trending)))
         t2 *= 1000
 
     if not duration:

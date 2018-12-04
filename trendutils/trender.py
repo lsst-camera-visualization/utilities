@@ -125,7 +125,7 @@ def main():
     inttot = int(sum([t[1] - t[0] for t in intervals])/1000)
     tmin = intervals[0][0]
     tmax = intervals[-1][1]
-    tz_slac = 'America/Los_Angeles'
+    tz_slac = tu.tz_trending
 
     trending_server = tu.get_trending_server()
     if trending_server:
