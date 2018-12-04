@@ -504,10 +504,10 @@ def main():
             else:
                 avg = med = std = rmean = rmedian = rstd = 0
             try:
-                print("{:>6g} {:>8.2g} {:>8.2g} {:>8.2g} ".format(
+                print("{:>6g} {:>8.3g} {:>8.3g} {:>8.2g} ".format(
                     nelem, avg, med, std), end="")
-                print("{:>8.2g} {:>8.2g} ".format(npmin, npmax), end="")
-                print("{:>8.2g} {:>8.2g} {:>8.2g}   ".format(
+                print("{:>8.3g} {:>8.3g} ".format(npmin, npmax), end="")
+                print("{:>8.3g} {:>8.3g} {:>8.2g}   ".format(
                     rmean, rmedian, rstd), end="")
                 print("{:<{wt}s} {:>{wu}s}".format(
                     path, unitstr, wt=40, wu=6))
