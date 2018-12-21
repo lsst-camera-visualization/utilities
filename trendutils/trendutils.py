@@ -24,14 +24,19 @@ def deltamtime(pathname):
     return time.time() - os.stat(pathname)[stat.ST_MTIME]
 
 
-def get_all_channels():
+def get_all_channels(maxidle=-1):
     """pulls all the channels from rest server
     """
     trending_server = get_trending_server()
     if not trending_server:
         return None
-    listpath = "8080/rest/data/dataserver/listchannels?maxIdleSeconds=-1"
+    listpathroot = "8080/rest/data/dataserver/listchannels?maxIdleSeconds="
+    if maxidle:
+        listpath = "{}{:d}".format(listpathroot, maxidle)
+    else:
+        listpath = "{}{:s}".format(listpathroot, "-1")
     url = "http://{}:{}".format(trending_server, listpath)
+    logging.debug('url=%s', url)
 
     # creating HTTP response object from given url
     resp = requests.get(url)
@@ -211,7 +216,7 @@ def print_channel_structure(xmlcontent):
                         ', '.join(attribs) if attribs else '-'))
 
 
-def update_trending_channels_xml():
+def update_trending_channels_xml(maxidle=None):
     """maintain local cache of trending channels in xml file with
        with age limit triggering a refresh (1 day)
     """
@@ -232,11 +237,13 @@ def update_trending_channels_xml():
             os.chmod(channel_file, mode | stat.S_IWUSR)
         delta = time.time() - statinfo.st_mtime
         logging.debug('found existing cache age: %s (s)', delta)
-        if delta < 86400:
+        if delta < 86400 and not maxidle:
+            logging.debug('returning existing channel_file=%s',
+                          channel_file)
             return channel_file
         logging.info('updating cached channel_file...')
         logging.debug('initial file: age=%s (s)', deltamtime(channel_file))
-    xmlstring = get_all_channels()
+    xmlstring = get_all_channels(maxidle)
     if xmlstring:
         chfile = open(channel_file, mode='wb')
         chfile.write(xmlstring)
