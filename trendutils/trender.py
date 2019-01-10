@@ -125,7 +125,7 @@ def main():
     inttot = int(sum([t[1] - t[0] for t in intervals])/1000)
     tmin = intervals[0][0]
     tmax = intervals[-1][1]
-    tz_slac = tu.tz_trending
+    tz_trending = tu.tz_trending
 
     trending_server = tu.get_trending_server()
     if trending_server:
@@ -413,7 +413,7 @@ def main():
         logging.debug('    chandata: %d uniq/sorted values from %d entries',
                       np.size(chandata[chid]), np.size(tmparr))
         del tmparr
-        if np.size(chandata[chid]) == 0:
+        if np.size(chandata[chid]) == 0:  # append chid to trimid list
             logging.debug('%s has no data', chanspec[chid]['path'])
             # arrange to trim empty data
             trimids.append(chid)
@@ -438,9 +438,9 @@ def main():
         print(" over {} (h:m:s) from:".format(
             dt.timedelta(seconds=(tmax/1000 - tmin/1000))))
         print("#     tmin={}: \"{}\"".format(tmin, dt.datetime.fromtimestamp(
-            tmin/1000, gettz(tz_slac)).isoformat(timespec='seconds')))
+            tmin/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
         print("#     tmax={}: \"{}\"".format(tmax, dt.datetime.fromtimestamp(
-            tmax/1000, gettz(tz_slac)).isoformat(timespec='seconds')))
+            tmax/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
         print("#{:<{wt}s}  {:>{wv}s}  {:<{wu}s}  {:<s}"
               .format(" \'timestamp (ms)\'", "\'value\'",
                       "\'unit\'", "\'channel CCS path\'",
@@ -478,10 +478,10 @@ def main():
             dt.timedelta(seconds=(tmax/1000 - tmin/1000))))
         print("#     tmin=\"{}\"".format(
             dt.datetime.fromtimestamp(
-                tmin/1000, gettz(tz_slac)).isoformat(timespec='seconds')))
+                tmin/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
         print("#     tmax=\"{}\"".format(
             dt.datetime.fromtimestamp(
-                tmax/1000, gettz(tz_slac)).isoformat(timespec='seconds')))
+                tmax/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
         print("# {:>4s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} ".format(
             'cnt', 'mean', 'median', 'stddev', 'min', 'max'), end="")
         print("{:>8s} {:>8s} {:>8s}  ".format(
@@ -515,7 +515,7 @@ def main():
                 # 'Broken pipe' IOError when stdout is closed
                 pass
 
-    # Plotting: initial rudimentary ability...
+    # Plotting:
     #
     if optlist.plot:
         # make one or more plots of the time series data
@@ -524,6 +524,8 @@ def main():
         # and to overlay all
 
         # figure out how many subplots and shape
+        # nax will store the number of actual plots
+        # the nxm array of plots may be larger
         #
         if optlist.overlayunits:  # axis set per unit
             unit_order = dict()
@@ -534,32 +536,37 @@ def main():
                     unit_order[unit] = unit_idx
                     unit_idx += 1
             nax = len(unit_order)
-            logging.debug("unit_order={}".format(unit_order))
-            logging.debug("nax={}".format(len(unit_order)))
+            logging.debug('unit_order=%s', unit_order)
         else:                     # nominal, one per channel
             nax = len(chanspec)
-            logging.debug("nax={}".format(len(chanspec)))
+
+        if nax == 0:
+            logging.error('no data to plot, check inputs?')
+            logging.error('try running with --debug')
+            exit(1)
 
         if not optlist.overlaytime:
             nax = nax * len(intervals)  # per interval, per channel
-            logging.debug('nax=%d', nax)
 
-        # (fig_width, fig_height) = plt.rcParams["figure.figsize"]
-        # fig_size = plt.rcParams["figure.figsize"]
-
-        # arrange for plot array shape ~landscape
-        ncols = int(math.ceil(math.sqrt(nax)))
-        nrows = int(math.ceil(float(nax)/ncols))
-        while nrows > 1 and float(ncols)/float(nrows) < 1.3:
-            ncols += 1
+        if optlist.overlay:  # just one plot box (axis)
+            nax = nrows = ncols = 1
+        else:
+            # arrange for plot array shape ~landscape
+            ncols = int(math.ceil(math.sqrt(nax)))
             nrows = int(math.ceil(float(nax)/ncols))
+            while nrows > 1 and float(ncols)/float(nrows) < 1.3:
+                ncols += 1
+                nrows = int(math.ceil(float(nax)/ncols))
 
+        logging.debug('nax=%d', nax)
         logging.debug('nrows= %d  ncols=%d', nrows, ncols)
+
         if optlist.overlay:  # just one plot box
             fig, axes = plt.subplots(1, 1)
         else:
-            fig, axes = plt.subplots(nrows, ncols, sharex=False)
-                                    #  figsize=(fig_width, fig_height))
+            (fig_width, fig_height) = plt.rcParams["figure.figsize"]
+            fig, axes = plt.subplots(nrows, ncols, sharex=False,
+                                     figsize=(fig_width*1.3, fig_height))
 
         # loop over data channels and plot them on correct axis
         chids = list(chanspec.keys())
@@ -577,7 +584,7 @@ def main():
                 x = chandata[chid]['tstamp'][mask] / 1000.0  # time in seconds
                 y = chandata[chid]['value'][mask]
                 # convert time axis to matplotlib dates sequence
-                dates = [dt.datetime.fromtimestamp(ts, gettz(tz_slac))
+                dates = [dt.datetime.fromtimestamp(ts, gettz(tz_trending))
                          for ts in x]
                 mds = mdate.date2num(dates)
                 # choose on which axis to plot
@@ -587,21 +594,23 @@ def main():
                     axcnt = chidx
                 if not optlist.overlaytime:  # stride is number of intervals
                     axcnt = axcnt*len(intervals) + idx
+                if optlist.overlay:
+                    axcnt = 0
                 ax = np.ravel(axes)[axcnt]
                 # do the actual plotting of this interval's data
                 if optlist.fmt:
                     fmt = optlist.fmt[0]
                 else:
                     fmt = 'o-'
-                if idx == (len(intervals) - 1):  # label on last interval
+                if idx == 0:  # label on first interval, store color
                     mlabel = "{}".format(chanspec[chid]['path'])
                     line = ax.plot_date(mds, y, fmt, label=mlabel,
-                                        markersize=4.0, tz=gettz(tz_slac))
+                                        markersize=4.0, tz=gettz(tz_trending))
                     mcolor = line[0].get_color()
                     logging.debug("mcolor= %s", mcolor)
-                else:         # no label on earlier intervals
+                else:         # no label on later intervals, use same color
                     line = ax.plot_date(mds, y, fmt, label=None, color=mcolor,
-                                        markersize=4.0, tz=gettz(tz_slac))
+                                        markersize=4.0, tz=gettz(tz_trending))
                 if not ax.get_ylabel():
                     ax.set_ylabel("{}".format(unit))
                 # xlabel for this axis
@@ -609,7 +618,7 @@ def main():
                     xlabel_str = "{} (tstart)".format(
                         dt.datetime.fromtimestamp(
                             intervals[idx][0]/1000,
-                            gettz(tz_slac)).isoformat(timespec='seconds'))
+                            gettz(tz_trending)).isoformat(timespec='seconds'))
                     logging.debug('ax.set_xlabel(%s)', xlabel_str)
                     ax.set_xlabel("{}".format(xlabel_str),
                                   position=(0., 1e6),
@@ -620,7 +629,7 @@ def main():
             #
 
         # plot array padded with invisible boxes
-        for pcnt in range(axcnt+1, nrows*ncols):
+        for pcnt in range(nax, nrows*ncols):
             ax = np.ravel(axes)[pcnt]
             ax.grid(False)
             ax.set_frame_on(False)
@@ -628,26 +637,37 @@ def main():
             ax.get_yaxis().set_visible(False)
 
         # make the legends for each plot in the array
+        # with legend placement/size adjustments
         if not optlist.nolegends:
             for pcnt in range(0, nax):
                 ax = np.ravel(axes)[pcnt]
                 handles, labels = ax.get_legend_handles_labels()
+                # sort the labels for easier reading
+                # using https://stackoverflow.com/questions/9764298
+                labels, handles = (
+                    list(t) for t in zip(*sorted(zip(labels, handles))))
                 logging.debug('len(handles)=%d  len(labels)=%d',
                               len(handles), len(labels))
                 if labels:
                     if len(handles) < 4:  # place in the box
                         ax.legend(handles, labels, loc='best', fancybox=True,
-                                  framealpha=0.5, fontsize='x-small',
-                                  title='CCS Channel')
-                    else:                 # place to the side
+                                  framealpha=0.5, fontsize='x-small')
+                    elif len(handles) < 8:  # place to right, small
                         ax.legend(handles, labels, loc='upper left',
-                                  bbox_to_anchor=(1, 1), fontsize='small',
-                                  title='CCS Channel')
+                                  bbox_to_anchor=(1, 1), fontsize='small')
+                    elif len(handles) < 24:  # place to right, xx-small
+                        ax.legend(handles, labels, loc='upper left',
+                                  bbox_to_anchor=(1, 1), fontsize='x-small')
+                    else:                    # to right, truncate legend
+                        labels[23] = "truncated labels[{}..{}]".format(
+                            24, len(handles)-1)
+                        ax.legend(handles[:24], labels[:24], loc='upper left',
+                                  bbox_to_anchor=(1, 1), fontsize='x-small')
 
         if optlist.title:
             logging.debug("using title=%s", optlist.title)
             fig.suptitle("{}".format(optlist.title))
-            fig.tight_layout(pad=4)
+            fig.tight_layout(pad=6)
         else:
             fig.tight_layout()
 
