@@ -20,6 +20,7 @@ import matplotlib.dates as mdate
 import trendutils as tu
 
 # plt.rcParams['text.usetex'] = True
+# plt.rcParams['figure.autolayout'] = True
 
 if sys.version_info[0] < 3 or sys.version_info[1] < 7:
     raise Exception("Must be using Python >=3.7")
@@ -54,11 +55,13 @@ def parse_args():
                                '''))
     # Input args
     parser.add_argument("channel_source", nargs='+',
-                        help="ListFile|Pattern specifying channels to report")
+                        help="ListFile|Regex specifying channels to report")
     parser.add_argument("--input_file", nargs='+',
                         help="XML file with trending data, =>no db query")
-    # Output options
-    ogroup = parser.add_mutually_exclusive_group()
+    #
+    # Output options for text based outputs
+    #
+    ogroup = parser.add_mutually_exclusive_group()  # all to stdout
     ogroup.add_argument("--xml", action='store_true',
                         help="Print formatted xml from trending to stdout")
     ogroup.add_argument("--text", action='store_true',
@@ -67,24 +70,37 @@ def parse_args():
                         help="Print statistics for each channel")
     ogroup.add_argument("--matchingchannels", action='store_true',
                         help="print list of matching channels and exit")
+    parser.add_argument("--rstats", action='store_true',
+                        help="Print robust stats for each channel")
+    #
     # Plotting specifications
+    #
     parser.add_argument("--plot", action='store_true',
-                        help="produce plotting")
+                        help="produce plots for each channel vs. time")
     parser.add_argument("--overlay", action='store_true',
-                        help="all on same plot")
-    parser.add_argument("--overlaytime", action='store_true',
-                        help="all time intervals on same plot")
+                        help="all channels on a single plot, eg. no subplots")
     parser.add_argument("--overlayunits", action='store_true',
-                        help="all units on same plot")
+                        help="channels grouped by units on same (sub)plot")
+    #
+    pgroup = parser.add_mutually_exclusive_group()  # all to stdout
+    pgroup.add_argument("--overlaytime", action='store_true',
+                        help="time axis is union of all time intervals")
+    pgroup.add_argument("--overlaystart", action='store_true',
+                        help="overlay channel data vs time from tstart")
+    pgroup.add_argument("--overlaystop", action='store_true',
+                        help="overlay channel data vs time until tstop")
+    #
     parser.add_argument("--nolegends", action='store_true',
                         help="Don't place any legends")
     parser.add_argument("--fmt", nargs=1, metavar='format_str',
                         help="Matplotlib format string (eg. \'o-\')")
     parser.add_argument("--title", nargs='?', metavar='Title (or blank)',
                         const='auto', help="specify Title String")
+    #
     # Time interval specifications
+    #
     dgroup = parser.add_mutually_exclusive_group()
-    dgroup.add_argument("--interval", metavar=('dstart', 'dstop'),
+    dgroup.add_argument("--interval", metavar=('tstart', 'tstop'),
                         nargs=2, action='append',
                         help="Pair of date/time specifiers")
     dgroup.add_argument("--start", metavar='tstart',
@@ -123,6 +139,8 @@ def main():
     # deal with interval accounting
     intcnt = len(intervals)
     inttot = int(sum([t[1] - t[0] for t in intervals])/1000)
+    intmax = int(max([t[1] - t[0] for t in intervals])/1000)
+    logging.debug('intmax=%d', intmax)
     tmin = intervals[0][0]
     tmax = intervals[-1][1]
     tz_trending = tu.tz_trending
@@ -159,6 +177,8 @@ def main():
     #
     channel_source_type = None
     chid_dict = None
+    channel_file = None
+    regexes = []
     for csource in optlist.channel_source:
         logging.debug('channel_source= %s', csource)
         #  test to determine type of channel_source
@@ -197,7 +217,8 @@ def main():
             #       3: pathelement [-]
             #   2: id [-]
             #   2: metadata [name, value]
-            channel_file = tu.update_trending_channels_xml()
+            if not channel_file:
+                channel_file = tu.update_trending_channels_xml()
             if not chid_dict:
                 # build a channel dictionary for all channels
                 # just do this once
@@ -220,6 +241,7 @@ def main():
                         # path_dict[path] = chid
                 del tree
 
+            # add csource as a new parameter in oflds[csource][chid]?
             # search the entire catalog for each pattern, this may be slow
             cpat = re.compile(csource)
             for chid in chid_dict:
@@ -228,6 +250,8 @@ def main():
 
             if oflds:
                 channel_source_type = 'pattern'
+                regexes.append(csource)
+
     del chid_dict
     # end of loop over channel sources
 
@@ -245,9 +269,9 @@ def main():
     if optlist.input_file:
         # get input from these files rather than trending service
         # an issue is that the input file need not have the
-        # same set of time intervals as given on the command line.
+        # same set of channels or time intervals as requested on command line.
         # We expect to apply the intervals to the output only by taking
-        # only times in the intersection
+        # only times in the intersection.  Up to user to use valid file.
         responses = []
         parser = etree.XMLParser(remove_blank_text=True)
         for ifile in optlist.input_file:
@@ -484,8 +508,9 @@ def main():
                 tmax/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
         print("# {:>4s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} ".format(
             'cnt', 'mean', 'median', 'stddev', 'min', 'max'), end="")
-        print("{:>8s} {:>8s} {:>8s}  ".format(
-            'rmean', 'rmedian', 'rstddev'), end="")
+        if optlist.rstats:
+            print("{:>8s} {:>8s} {:>8s}  ".format(
+                'rmean', 'rmedian', 'rstddev'), end="")
         print(" {:<{wt}s} {:>{wu}s}".format('path', 'units', wt=40, wu=6))
 
         for chid in chanspec:
@@ -500,15 +525,18 @@ def main():
                 std = np.std(y)
                 npmin = np.min(y)
                 npmax = np.max(y)
-                rmean, rmedian, rstd = stats.sigma_clipped_stats(y)
+                if optlist.rstats:
+                    rmean, rmedian, rstd = stats.sigma_clipped_stats(y)
             else:
-                avg = med = std = rmean = rmedian = rstd = 0
+                avg = med = std = npmin = npmax = 0
+                grad = rmean = rmedian = rstd = 0
             try:
                 print("{:>6g} {:>8.3g} {:>8.3g} {:>8.2g} ".format(
-                    nelem, avg, med, std), end="")
+                    nelem, avg, med, std,), end="")
                 print("{:>8.3g} {:>8.3g} ".format(npmin, npmax), end="")
-                print("{:>8.3g} {:>8.3g} {:>8.2g}   ".format(
-                    rmean, rmedian, rstd), end="")
+                if optlist.rstats:
+                    print("{:>8.3g} {:>8.3g} {:>8.2g}   ".format(
+                        rmean, rmedian, rstd), end="")
                 print("{:<{wt}s} {:>{wu}s}".format(
                     path, unitstr, wt=40, wu=6))
             except IOError:
@@ -523,7 +551,8 @@ def main():
         # option to combine intervals and channels by units
         # and to overlay all
 
-        # figure out how many subplots and shape
+        # figure out how many distinct plots and windows to make
+        # subplots layout and shape are determined
         # nax will store the number of actual plots
         # the nxm array of plots may be larger
         #
@@ -545,7 +574,9 @@ def main():
             logging.error('try running with --debug')
             exit(1)
 
-        if not optlist.overlaytime:
+        if not optlist.overlaytime and\
+            not optlist.overlaystart and\
+                not optlist.overlaystop:
             nax = nax * len(intervals)  # per interval, per channel
 
         if optlist.overlay:  # just one plot box (axis)
@@ -566,7 +597,7 @@ def main():
         else:
             (fig_width, fig_height) = plt.rcParams["figure.figsize"]
             fig, axes = plt.subplots(nrows, ncols, sharex=False,
-                                     figsize=(fig_width*1.3, fig_height))
+                                     figsize=(fig_width*1.6, fig_height))
 
         # loop over data channels and plot them on correct axis
         chids = list(chanspec.keys())
@@ -577,56 +608,115 @@ def main():
             unit = chanspec[chid]['units']
             tstamp = chandata[chid]['tstamp']
             mcolor = None
-            for idx in range(0, len(intervals)):  # intervals per channel
-                # mask the tstamps outside of the interval
-                mask = ((intervals[idx][0] < tstamp) &
-                        (tstamp < intervals[idx][-1]))
-                x = chandata[chid]['tstamp'][mask] / 1000.0  # time in seconds
-                y = chandata[chid]['value'][mask]
-                # convert time axis to matplotlib dates sequence
-                dates = [dt.datetime.fromtimestamp(ts, gettz(tz_trending))
-                         for ts in x]
-                mds = mdate.date2num(dates)
+            for idx in range(0, len(intervals)):
                 # choose on which axis to plot
                 if optlist.overlayunits:
                     axcnt = unit_order[unit]  # map unit to correct axis
                 else:
                     axcnt = chidx
-                if not optlist.overlaytime:  # stride is number of intervals
+                if not optlist.overlaytime and\
+                        not optlist.overlaystart and\
+                        not optlist.overlaystop:
+                    # stride is number of intervals
                     axcnt = axcnt*len(intervals) + idx
+
                 if optlist.overlay:
                     axcnt = 0
                 ax = np.ravel(axes)[axcnt]
-                # do the actual plotting of this interval's data
+                logging.debug('axcnt= %d  idx= %d', axcnt, idx)
+                # mask the tstamps outside of the interval
+                mask = ((intervals[idx][0] < tstamp) &
+                        (tstamp < intervals[idx][1]))
+                mask_start = intervals[idx][0] / 1000.0
+                mask_stop = intervals[idx][1] / 1000.0
+                x = chandata[chid]['tstamp'][mask] / 1000.0  # time in seconds
+                y = chandata[chid]['value'][mask]
+                # deal with point/line format
                 if optlist.fmt:
                     fmt = optlist.fmt[0]
                 else:
                     fmt = 'o-'
-                if idx == 0:  # label on first interval, store color
-                    mlabel = "{}".format(chanspec[chid]['path'])
-                    line = ax.plot_date(mds, y, fmt, label=mlabel,
-                                        markersize=4.0, tz=gettz(tz_trending))
+                # do that actual plotting
+                if not optlist.overlaystart and not optlist.overlaystop:
+                    #
+                    # convert time axis to matplotlib dates sequence
+                    #
+                    dates = [dt.datetime.fromtimestamp(ts, gettz(tz_trending))
+                             for ts in x]
+                    mds = mdate.date2num(dates)
+                    if idx == 0:  # label on first interval, store color
+                        mlabel = "{}".format(chanspec[chid]['path'])
+                        line = ax.plot_date(mds, y, fmt, label=mlabel,
+                                            markersize=4.0,
+                                            tz=gettz(tz_trending))
+                        mcolor = line[0].get_color()
+                        logging.debug("mcolor= %s", mcolor)
+                    else:         # no label on later intervals, use same color
+                        line = ax.plot_date(mds, y, fmt, label=None,
+                                            color=mcolor, markersize=4.0,
+                                            tz=gettz(tz_trending))
+                    if not ax.get_ylabel():
+                        ax.set_ylabel("{}".format(unit))
+                    # xlabel for this axis
+                    if not ax.get_xlabel():
+                        xlabel_str = "{} (tstart)".format(
+                            dt.datetime.fromtimestamp(
+                                intervals[idx][0]/1000,
+                                gettz(tz_trending)).isoformat(
+                                    timespec='seconds'))
+                        logging.debug('ax.set_xlabel(%s)', xlabel_str)
+                        ax.set_xlabel("{}".format(xlabel_str),
+                                      position=(0., 1e6),
+                                      horizontalalignment='left')
+                        fig.autofmt_xdate()
+                else:
+                    # convert x to duration axis units (s+/-)
+                    #
+                    if optlist.overlaystart:
+                        x = x - mask_start
+                    elif optlist.overlaystop:
+                        x = x - mask_stop
+                    else:
+                        logging.error('overlaystart/stop problem')
+                        exit(1)
+
+                    # if idx == 0:  # label on first interval, store color
+                    mlabel = "{}[{}]".format(chanspec[chid]['path'], idx)
+                    line = ax.plot(x, y, fmt, label=mlabel, markersize=4.0)
                     mcolor = line[0].get_color()
                     logging.debug("mcolor= %s", mcolor)
-                else:         # no label on later intervals, use same color
-                    line = ax.plot_date(mds, y, fmt, label=None, color=mcolor,
-                                        markersize=4.0, tz=gettz(tz_trending))
-                if not ax.get_ylabel():
-                    ax.set_ylabel("{}".format(unit))
-                # xlabel for this axis
-                if not ax.get_xlabel():
-                    xlabel_str = "{} (tstart)".format(
-                        dt.datetime.fromtimestamp(
-                            intervals[idx][0]/1000,
-                            gettz(tz_trending)).isoformat(timespec='seconds'))
-                    logging.debug('ax.set_xlabel(%s)', xlabel_str)
-                    ax.set_xlabel("{}".format(xlabel_str),
-                                  position=(0., 1e6),
-                                  horizontalalignment='left')
-
-            fig.autofmt_xdate()
-            logging.debug('axcnt= %d', axcnt)
-            #
+                    # else:         # no label on later intervals, use same color
+                    #     line = ax.plot(x, y, fmt, label=None, color=mcolor,
+                    #                    markersize=4.0)
+                    if not ax.get_ylabel():
+                        ax.set_ylabel("{}".format(unit))
+                    # xlabel for this axis
+                    if not ax.get_xlabel():
+                        if optlist.overlaystart:
+                            xstr = "tstart"
+                            xid = 0
+                        if optlist.overlaystop:
+                            xstr = "tstop"
+                            xid = 1
+                        xlabel_str = "{} ({}[0])".format(
+                            dt.datetime.fromtimestamp(
+                                intervals[0][xid]/1000,
+                                gettz(tz_trending)).isoformat(
+                                    timespec='seconds'), xstr)
+                        if len(intervals) > 1:
+                            xlabel_str1 = "{} ({}[{}])".format(
+                                dt.datetime.fromtimestamp(
+                                    intervals[-1][xid]/1000,
+                                    gettz(tz_trending)).isoformat(
+                                        timespec='seconds'), xstr,
+                                len(intervals) - 1)
+                            if len(intervals) > 2:
+                                xlabel_str1 = "...{}".format(xlabel_str1)
+                            xlabel_str = "{}\n{}".format(xlabel_str,
+                                                         xlabel_str1)
+                        ax.set_xlabel("{}".format(xlabel_str,
+                                                  position=(0., 1e6),
+                                                  horizontalalignment='left'))
 
         # plot array padded with invisible boxes
         for pcnt in range(nax, nrows*ncols):
@@ -642,12 +732,14 @@ def main():
             for pcnt in range(0, nax):
                 ax = np.ravel(axes)[pcnt]
                 handles, labels = ax.get_legend_handles_labels()
+                if not handles or not labels:
+                    continue
                 # sort the labels for easier reading
                 # using https://stackoverflow.com/questions/9764298
-                labels, handles = (
-                    list(t) for t in zip(*sorted(zip(labels, handles))))
                 logging.debug('len(handles)=%d  len(labels)=%d',
                               len(handles), len(labels))
+                labels, handles = (
+                    list(t) for t in zip(*sorted(zip(labels, handles))))
                 if labels:
                     if len(handles) < 4:  # place in the box
                         ax.legend(handles, labels, loc='best', fancybox=True,
@@ -655,23 +747,23 @@ def main():
                     elif len(handles) < 8:  # place to right, small
                         ax.legend(handles, labels, loc='upper left',
                                   bbox_to_anchor=(1, 1), fontsize='small')
-                    elif len(handles) < 24:  # place to right, xx-small
+                    elif len(handles) < 25:  # place to right, xx-small
                         ax.legend(handles, labels, loc='upper left',
                                   bbox_to_anchor=(1, 1), fontsize='x-small')
                     else:                    # to right, truncate legend
-                        labels[23] = "truncated labels[{}..{}]".format(
-                            24, len(handles)-1)
-                        ax.legend(handles[:24], labels[:24], loc='upper left',
+                        labels[24] = "truncated labels[{}:{}]".format(
+                            24, len(handles))
+                        ax.legend(handles[:25], labels[:25], loc='upper left',
                                   bbox_to_anchor=(1, 1), fontsize='x-small')
 
         if optlist.title:
             logging.debug("using title=%s", optlist.title)
             fig.suptitle("{}".format(optlist.title))
-            fig.tight_layout(pad=6)
+            fig.set_tight_layout({"pad": 2.0})
+            plt.show()
         else:
-            fig.tight_layout()
-
-        plt.show()
+            fig.set_tight_layout(True)
+            plt.show()
 
     # end of main()
     exit(0)
@@ -716,7 +808,7 @@ def get_unique_time_intervals(optlist):
     to merge overlapping periods yielding distinct intervals.
 
     Output: A ordered list of non-overlapping periods are returned
-            as [[t00,t01], [t10,t11],...,[tn0,tn1]]
+            as [[t00,t01], [t10,t11], ...,[tn0,tn1]]
     """
     intervals = []
     duration = optlist.duration

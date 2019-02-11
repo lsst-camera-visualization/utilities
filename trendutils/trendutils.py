@@ -68,7 +68,7 @@ def parse_datestr(datestr):
     return (dt - datetime(1970, 1, 1, tzinfo=tzutc())).total_seconds()
 
 
-def get_time_interval(startstr, stopstr, duration=600):
+def get_time_interval(startstr, stopstr, duration=None):
     """return the timeinterval boundaries (ms) from datestrings
     """
     if startstr:
@@ -113,6 +113,7 @@ def get_trending_server():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
     res = re.search(trendnetre, s.getsockname()[0])
+    s.close()
     if res:
         trending_server = default_trending_server
         logging.debug('on SLAC network: trending server is lsst-mcm')
@@ -148,19 +149,19 @@ def geturi(uri):
             return None
         resp = requests.get(uri)
         return resp.content
-    else:
-        #  it may be a file, try to open as a path
-        if not os.path.exists(uri):
-            logging.error('%s is not a path', uri)
-            return None
-        try:
-            xmlfile = open(uri, mode='rb')
-        except IOError as e:
-            logging.error('I/O error(%s): %s', e.errno, e.strerror)
-            return None
-        xmlstring = xmlfile.read()
-        xmlfile.close()
-        return xmlstring
+
+    #  it may be a file, try to open as a path
+    if not os.path.exists(uri):
+        logging.error('%s is not a path', uri)
+        return None
+    try:
+        xmlfile = open(uri, mode='rb')
+    except IOError as e:
+        logging.error('I/O error(%s): %s', e.errno, e.strerror)
+        return None
+    xmlstring = xmlfile.read()
+    xmlfile.close()
+    return xmlstring
 
 
 def print_channel_content(xmlcontent, ssnames):
@@ -230,25 +231,28 @@ def update_trending_channels_xml(maxidle=None):
     if not os.path.isdir(cachedir):    # is not a directory
         logging.error('%s is not a directory, exiting...', cachedir)
         exit(1)
-    if os.path.exists(channel_file):  # file exists or not
+    if os.path.exists(channel_file) or maxidle:
         statinfo = os.stat(channel_file)
         mode = statinfo.st_mode
         if not stat.S_IWUSR & mode:  # not writeable
             os.chmod(channel_file, mode | stat.S_IWUSR)
         delta = time.time() - statinfo.st_mtime
         logging.debug('found existing cache age: %s (s)', delta)
-        if delta < 86400 and not maxidle:
+        update = True if delta > 86400 else False
+        if not update:
             logging.debug('returning existing channel_file=%s',
                           channel_file)
-            return channel_file
+    else:  # file does not exist
+        update = True
+    if update:
         logging.info('updating cached channel_file...')
         logging.debug('initial file: age=%s (s)', deltamtime(channel_file))
-    xmlstring = get_all_channels(maxidle)
-    if xmlstring:
-        chfile = open(channel_file, mode='wb')
-        chfile.write(xmlstring)
-        chfile.close()
-    else:
-        logging.info('failed to update cached channel_file, continuing')
-    logging.debug('final file: age=%s (s)', deltamtime(channel_file))
+        xmlstring = get_all_channels(maxidle)
+        if xmlstring:
+            chfile = open(channel_file, mode='wb')
+            chfile.write(xmlstring)
+            chfile.close()
+        else:
+            logging.info('failed update cached channel_file, continuing')
+        logging.debug('final file: age=%s (s)', deltamtime(channel_file))
     return channel_file
