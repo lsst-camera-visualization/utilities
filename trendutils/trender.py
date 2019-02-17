@@ -71,7 +71,7 @@ def parse_args():
     ogroup.add_argument("--matchingchannels", action='store_true',
                         help="print list of matching channels and exit")
     parser.add_argument("--rstats", action='store_true',
-                        help="Print robust stats for each channel")
+                        help="Print additional robust stats per channel")
     #
     # Plotting specifications
     #
@@ -110,6 +110,9 @@ def parse_args():
     parser.add_argument("--duration", metavar='seconds',
                         default=None, type=int,
                         help="duration in seconds for start/stop spec")
+    parser.add_argument("--timebins", nargs='?', const=0, type=int,
+                        metavar='nBins (blank for autosize)', default=None,
+                        help="plot time avg'd bins (esp for long durations)")
     parser.add_argument("--debug", action='store_true',
                         help="Print additional debugging info")
     return parser.parse_args()
@@ -302,7 +305,8 @@ def main():
         idstr = '&id='.join(id for id in oflds)
         responses = []
         for interval in intervals:
-            res = query_rest_server(interval[0], interval[1], data_url, idstr)
+            res = query_rest_server(interval[0], interval[1], data_url, idstr,
+                                    optlist.timebins)
             responses.append(res)
 
     # Output to stdout a well formed xml tree aggregating the xml received
@@ -348,9 +352,11 @@ def main():
             # logging.debug('id=%s  path=%s', chid, path)
             if chid not in oflds:
                 continue
-            if oflds[chid] != path:
-                logging.error('inputpath(id=%s): %s != %s = xmlpath',
-                              chid, oflds[chid], path)
+            if path is None or oflds[chid] != path:
+                logging.error('inputpath(id=%s): %s != %s (xmlpath), using %s',
+                              chid, oflds[chid], path, oflds[chid])
+                path = oflds[chid]
+                # continue
             # first check for existing....
             if chid in chanspec and chanspec[chid]['path'] != path:
                 logging.warning('path mismatch for channel_id= %d', chid)
@@ -636,7 +642,7 @@ def main():
                     fmt = optlist.fmt[0]
                 else:
                     fmt = 'o-'
-                # do that actual plotting
+                # do the actual plotting
                 if not optlist.overlaystart and not optlist.overlaystop:
                     #
                     # convert time axis to matplotlib dates sequence
@@ -680,14 +686,10 @@ def main():
                         logging.error('overlaystart/stop problem')
                         exit(1)
 
-                    # if idx == 0:  # label on first interval, store color
                     mlabel = "{}[{}]".format(chanspec[chid]['path'], idx)
                     line = ax.plot(x, y, fmt, label=mlabel, markersize=4.0)
                     mcolor = line[0].get_color()
                     logging.debug("mcolor= %s", mcolor)
-                    # else:         # no label on later intervals, use same color
-                    #     line = ax.plot(x, y, fmt, label=None, color=mcolor,
-                    #                    markersize=4.0)
                     if not ax.get_ylabel():
                         ax.set_ylabel("{}".format(unit))
                     # xlabel for this axis
@@ -759,7 +761,7 @@ def main():
         if optlist.title:
             logging.debug("using title=%s", optlist.title)
             fig.suptitle("{}".format(optlist.title))
-            fig.set_tight_layout({"pad": 2.0})
+            fig.set_tight_layout({"pad": 2.4})
             plt.show()
         else:
             fig.set_tight_layout(True)
@@ -769,17 +771,30 @@ def main():
     exit(0)
 
 
-def query_rest_server(ts1, ts2, data_url, idstr):
+def query_rest_server(ts1, ts2, data_url, idstr, nbins):
     """get xml from restful interface for the requested channels
        with a single request
        inputs:
            t1, t2 are start/stop time in ms
            data_url is url w/out args
            idstr is string with all channel ids
+           nbins: request raw or binned data from DB
        output: raw xml response from the service is returned
     """
     s = requests.Session()
-    options = {'t1': int(ts1), 't2': int(ts2), 'flavor': 'raw', 'n': 1}
+    if nbins is None:
+        options = {'t1': int(ts1), 't2': int(ts2), 'flavor': 'raw', 'n': 1}
+    else:  # raw data
+        if nbins == 0:  # need to autosize it
+            if int((ts2 - ts1)/1000) < 1000:  # just get raw data
+                options = {'ts1': int(ts1), 't2': int(ts2), 'flavor': 'raw'}
+            else:
+                nbins = ((ts2 - ts1)/1000) / 20  # bins are 20s wide
+                options = {'t1': int(ts1), 't2': int(ts2),
+                           'flavor': 'stat', 'n': int(nbins)}
+        else:
+            options = {'t1': int(ts1), 't2': int(ts2),
+                       'flavor': 'stat', 'n': int(nbins)}
     uri = "{}/data/?id={}".format(data_url, idstr)
     t_start = time.time()
     try:
