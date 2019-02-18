@@ -304,9 +304,18 @@ def main():
         # join the ids requested as "id0&id=id1&id=id2..." for query
         idstr = '&id='.join(id for id in oflds)
         responses = []
-        for interval in intervals:
-            res = query_rest_server(interval[0], interval[1], data_url, idstr,
-                                    optlist.timebins)
+        for ival in intervals:
+            if optlist.timebins == 0:  # autosize it
+                logging.debug('timebins=0')
+                if int((ival[1] - ival[0])/1000) < 300:  # just get raw data
+                    logging.debug('ival[1]= %d, ival[0]= %d', ival[1], ival[0])
+                    optlist.timebins = None
+                else:
+                    logging.debug('ival[1]= %d, ival[0]= %d', ival[1], ival[0])
+                    optlist.timebins = int(((ival[1] - ival[0])/1000.0) / 60.0)
+            logging.debug("timebins= {}".format(optlist.timebins))
+            res = query_rest_server(ival[0], ival[1],
+                                    data_url, idstr, optlist.timebins)
             responses.append(res)
 
     # Output to stdout a well formed xml tree aggregating the xml received
@@ -641,7 +650,10 @@ def main():
                 if optlist.fmt:
                     fmt = optlist.fmt[0]
                 else:
-                    fmt = 'o-'
+                    if optlist.timebins:
+                        fmt = '|-'
+                    else:
+                        fmt = 'o-'
                 # do the actual plotting
                 if not optlist.overlaystart and not optlist.overlaystop:
                     #
@@ -670,6 +682,9 @@ def main():
                                 intervals[idx][0]/1000,
                                 gettz(tz_trending)).isoformat(
                                     timespec='seconds'))
+                        if optlist.timebins:
+                            xlabel_str = "{} [{} timebins]".format(
+                                xlabel_str, optlist.timebins)
                         logging.debug('ax.set_xlabel(%s)', xlabel_str)
                         ax.set_xlabel("{}".format(xlabel_str),
                                       position=(0., 1e6),
@@ -782,19 +797,11 @@ def query_rest_server(ts1, ts2, data_url, idstr, nbins):
        output: raw xml response from the service is returned
     """
     s = requests.Session()
-    if nbins is None:
+    if nbins is None:  # raw data
         options = {'t1': int(ts1), 't2': int(ts2), 'flavor': 'raw', 'n': 1}
-    else:  # raw data
-        if nbins == 0:  # need to autosize it
-            if int((ts2 - ts1)/1000) < 1000:  # just get raw data
-                options = {'ts1': int(ts1), 't2': int(ts2), 'flavor': 'raw'}
-            else:
-                nbins = ((ts2 - ts1)/1000) / 20  # bins are 20s wide
-                options = {'t1': int(ts1), 't2': int(ts2),
-                           'flavor': 'stat', 'n': int(nbins)}
-        else:
-            options = {'t1': int(ts1), 't2': int(ts2),
-                       'flavor': 'stat', 'n': int(nbins)}
+    else:  # CCS stat data
+        options = {'t1': int(ts1), 't2': int(ts2),
+                   'flavor': 'stat', 'n': int(nbins)}
     uri = "{}/data/?id={}".format(data_url, idstr)
     t_start = time.time()
     try:
