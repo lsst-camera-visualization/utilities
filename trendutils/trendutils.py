@@ -236,8 +236,8 @@ def update_trending_channels_xml(maxidle=None):
         mode = statinfo.st_mode
         if not stat.S_IWUSR & mode:  # not writeable
             os.chmod(channel_file, mode | stat.S_IWUSR)
-        delta = time.time() - statinfo.st_mtime
-        logging.debug('found existing cache age: %s (s)', delta)
+        delta = int(time.time() - statinfo.st_mtime)
+        logging.debug('found existing cache age: %d (s)', delta)
         update = True if delta > 86400 else False
         if not update:
             logging.debug('returning existing channel_file=%s',
@@ -246,7 +246,7 @@ def update_trending_channels_xml(maxidle=None):
         update = True
     if update:
         logging.info('updating cached channel_file...')
-        logging.debug('initial file: age=%s (s)', deltamtime(channel_file))
+        #logging.debug('initial file: age=%s (s)', deltamtime(channel_file))
         xmlstring = get_all_channels(maxidle)
         if xmlstring:
             chfile = open(channel_file, mode='wb')
@@ -254,5 +254,5 @@ def update_trending_channels_xml(maxidle=None):
             chfile.close()
         else:
             logging.info('failed update cached channel_file, continuing')
-        logging.debug('final file: age=%s (s)', deltamtime(channel_file))
+        #logging.debug('final file: age=%s (s)', deltamtime(channel_file))
     return channel_file
