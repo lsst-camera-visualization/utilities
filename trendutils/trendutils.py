@@ -25,14 +25,15 @@ def deltamtime(pathname):
 
 
 def get_all_channels(maxidle=-1):
-    """pulls all the channels from rest server
+    """get list of channels from the server
+       maxidle recovers channels active within maxidle seconds
     """
     trending_server = get_trending_server()
     if not trending_server:
         return None
     listpathroot = "8080/rest/data/dataserver/listchannels?maxIdleSeconds="
     if maxidle:
-        listpath = "{}{:d}".format(listpathroot, maxidle)
+        listpath = "{}{:d}".format(listpathroot, int(maxidle))
     else:
         listpath = "{}{:s}".format(listpathroot, "-1")
     url = "http://{}:{}".format(trending_server, listpath)
@@ -49,7 +50,7 @@ def parse_datestr(datestr):
        The tz_trending timezone specification is used
     """
     if datestr:  # parse the date string almost any format
-        logging.debug('datestr=%s', datestr)
+        logging.debug('parse_date_str(datestr=%s)', datestr)
         try:
             dt = dp.parse(datestr)
         except ValueError as e:
@@ -85,6 +86,8 @@ def get_time_interval(startstr, stopstr, duration=None):
 
     if not duration:
         duration = 600
+    else:
+        duration = convert_to_seconds(duration)
 
     # cases for t1, t2
     if startstr and stopstr:
@@ -217,42 +220,92 @@ def print_channel_structure(xmlcontent):
                         ', '.join(attribs) if attribs else '-'))
 
 
-def update_trending_channels_xml(maxidle=None):
-    """maintain local cache of trending channels in xml file with
-       with age limit triggering a refresh (1 day)
+def update_trending_channels_xml(tstart=None, tstop=None):
+    """maintain local cache of trending channels in xml file
+       arg: tstart -- channels active since tstart (seconds since the epoch)
     """
-    logging.debug("update_trending_channels_xml()...")
+    logging.debug('update_trending_channels_xml(%s, %s)', tstart, tstop)
     cachedir = "{}/.trender".format(os.environ.get('HOME'))
     channel_file = "{}/.trender/listchannels.xml".format(
         os.environ.get('HOME'))
+    update = True
     # check channel_file exists, get mtime, update if need be
     if not os.path.exists(cachedir):   # make cachdir if not exist
         os.mkdir(cachedir)
     if not os.path.isdir(cachedir):    # is not a directory
         logging.error('%s is not a directory, exiting...', cachedir)
         exit(1)
-    if os.path.exists(channel_file) or maxidle:
+    #
+    # Trigger an update based on whether the interval (tstart,tstop)
+    # is covered in the existing cached file based on time of last update
+    # and maxIdleSeconds given when the file was fetched.  The attribute
+    # 'activeSinceDate' is then maxIdleSeconds prior to last update time
+    #
+    if os.path.exists(channel_file):  # trigger update based on mtime
         statinfo = os.stat(channel_file)
         mode = statinfo.st_mode
         if not stat.S_IWUSR & mode:  # not writeable
             os.chmod(channel_file, mode | stat.S_IWUSR)
         delta = int(time.time() - statinfo.st_mtime)
-        logging.debug('found existing cache age: %d (s)', delta)
-        update = True if delta > 86400 else False
-        if not update:
-            logging.debug('returning existing channel_file=%s',
-                          channel_file)
-    else:  # file does not exist
-        update = True
+        logging.debug('existing cache age: %d (s)', delta)
+
+        chfile = open(channel_file, mode='rb')
+        xmlstring = chfile.read()
+        chfile.close()
+        root = etree.fromstring(xmlstring)
+        active_since = root.attrib.get('activeSinceDate')
+        if active_since:  # parse, convert and compare to tstart
+            xml_start_epoch = parse_datestr(active_since)
+            logging.debug('%s channels active_since: %s', channel_file,
+                          datetime.fromtimestamp(xml_start_epoch,
+                                                 gettz(tz_trending)))
+        # If tstart is inside the interval: [xml_start, last_update]
+        # then can guarantee desired channels were being published
+        # and hence are already in the cached file.
+        if tstart and xml_start_epoch < tstart < statinfo.st_mtime:
+            if not tstop or tstop < (statinfo.st_mtime + 86400):
+                update = False
+
     if update:
         logging.info('updating cached channel_file...')
-        #logging.debug('initial file: age=%s (s)', deltamtime(channel_file))
-        xmlstring = get_all_channels(maxidle)
-        if xmlstring:
-            chfile = open(channel_file, mode='wb')
-            chfile.write(xmlstring)
-            chfile.close()
+        if tstart:
+            xstart = tstart - 86400  # adjust to 24h earlier
+            maxidle = int(time.time() - xstart)
         else:
-            logging.info('failed update cached channel_file, continuing')
-        #logging.debug('final file: age=%s (s)', deltamtime(channel_file))
+            maxidle = 3600 * 24 * 7  # give it a week
+            xstart = int(time.time() - maxidle)
+        xmlstring = get_all_channels(maxidle)
+        root = etree.fromstring(xmlstring)
+        active_since = root.attrib.get('activeSinceDate')
+        if not active_since:  # needed until service adds this attrib
+            active_since_str = datetime.fromtimestamp(xstart).isoformat(
+                timespec='seconds')
+            root.set("activeSinceDate", active_since_str)
+        if xmlstring:
+            tree = etree.ElementTree(root)
+            tree.write(channel_file, xml_declaration=True,
+                       encoding='UTF-8', pretty_print=False,
+                       standalone="yes")
+    else:
+        logging.debug('returning existing channel_file=%s', channel_file)
     return channel_file
+
+
+def convert_to_seconds(duration_str):
+    """
+    return duration in seconds
+    """
+
+    seconds = 0
+    if re.match(r"[0-9]+$", duration_str):
+        seconds = int(duration_str[:-1])
+    elif re.match(r"[0-9]+s$", duration_str):
+        seconds = int(duration_str[:-1])
+    elif re.match(r"[0-9]+m$", duration_str):
+        seconds = 60 * int(duration_str[:-1])
+    elif re.match(r"[0-9]+h$", duration_str):
+        seconds = 3600 * int(duration_str[:-1])
+    elif re.match(r"[0-9]+d$", duration_str):
+        seconds = 84600 * int(duration_str[:-1])
+
+    return seconds

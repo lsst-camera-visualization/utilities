@@ -31,7 +31,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent('''
-        Fetch trending data from camera database
+        Fetch and present trending data from camera database
                                     '''),
         epilog=textwrap.dedent('''
         This application expects to access the CCS trending database,
@@ -68,7 +68,7 @@ def parse_args():
                         help="Print (timestamp, value, path) colum text")
     ogroup.add_argument("--stats", action='store_true',
                         help="Print statistics for each channel")
-    ogroup.add_argument("--matchingchannels", action='store_true',
+    ogroup.add_argument("--match", action='store_true',
                         help="print list of matching channels and exit")
     parser.add_argument("--rstats", action='store_true',
                         help="Print additional robust stats per channel")
@@ -107,14 +107,19 @@ def parse_args():
                         help="Date/time specifier(s)", nargs='+')
     dgroup.add_argument("--stop", metavar='tstop',
                         help="Date/time specifier(s)", nargs='+')
-    parser.add_argument("--duration", metavar='seconds',
-                        default=None, type=int,
-                        help="duration in seconds for start/stop spec")
+    parser.add_argument("--duration", metavar='seconds', default=None,
+                        help="duration [s]|(*s,*m,*h,*d) start/stop spec")
     parser.add_argument("--timebins", nargs='?', const=0, type=int,
                         metavar='nBins (blank for autosize)', default=None,
                         help="plot time avg'd bins (esp for long durations)")
     parser.add_argument("--debug", action='store_true',
                         help="Print additional debugging info")
+    #
+    parser.add_argument("--forceupdate", action='store_true',
+                        help="Force update on cached channel file")
+
+    #
+    #
     return parser.parse_args()
 
 
@@ -143,7 +148,6 @@ def main():
     intcnt = len(intervals)
     inttot = int(sum([t[1] - t[0] for t in intervals])/1000)
     intmax = int(max([t[1] - t[0] for t in intervals])/1000)
-    logging.debug('intmax=%d', intmax)
     tmin = intervals[0][0]
     tmax = intervals[-1][1]
     tz_trending = tu.tz_trending
@@ -166,7 +170,7 @@ def main():
                       """, re.X)
 
     # loop over input sources to define the channels for query/output
-    # 2 choices:
+    # 2 exclusive choices:
     #     1.) a file with 3 fields per line (after comment removal) where
     #         the line format is '^[01]\s+<CCS path>\s+<channel_id>'
     #     2.) a pattern that can be matched against the cached full list of
@@ -214,35 +218,15 @@ def main():
 
         if channel_source_type == 'pattern' or not channel_source_type:
             logging.debug('eval pattern for matching channels...')
-            # 0: datachannels [-]
-            #   1: datachannel [-]
-            #     2: path [-]
-            #       3: pathelement [-]
-            #   2: id [-]
-            #   2: metadata [name, value]
             if not channel_file:
-                channel_file = tu.update_trending_channels_xml()
+                if optlist.forceupdate:
+                    channel_file = tu.update_trending_channels_xml()
+                else:
+                    channel_file = tu.update_trending_channels_xml(
+                        tmin/1000, tmax/1000)
+
             if not chid_dict:
-                # build a channel dictionary for all channels
-                # just do this once
-                # this should be a function of course
-                logging.debug('building full channel dictionary')
-                chid_dict = dict()
-                # path_dict = dict()
-                tree = etree.parse(channel_file)
-                root = tree.getroot()
-                for dchan in root.iterfind('datachannel'):
-                    chid = dchan.find('id').text
-                    # build path
-                    parr = []  # list to hold path elements
-                    pp = dchan.find('path')
-                    for pe in pp.iterfind('pathelement'):
-                        parr.append(pe.text)
-                    path = '/'.join(parr)
-                    if path and chid:  # this is supposed to be 1-1 map
-                        chid_dict[chid] = path
-                        # path_dict[path] = chid
-                del tree
+                chid_dict = get_channel_dict(channel_file)
 
             # add csource as a new parameter in oflds[csource][chid]?
             # search the entire catalog for each pattern, this may be slow
@@ -250,15 +234,17 @@ def main():
             for chid in chid_dict:
                 if cpat.search(chid_dict[chid]):
                     oflds[chid] = chid_dict[chid]
+                    #  oflds[csource][chid] = chid_dict[chid]
 
             if oflds:
                 channel_source_type = 'pattern'
                 regexes.append(csource)
 
     del chid_dict
-    # end of loop over channel sources
+    # end of loop over input sources to define the channels for query/output
+    # now have info needed to query the CCS trending db
 
-    if optlist.matchingchannels:
+    if optlist.match:
         print('Found matching channels:')
         for chid in oflds:
             print("   id: {}  path: {}".format(chid, oflds[chid]))
@@ -269,6 +255,8 @@ def main():
         for chid in oflds:
             logging.debug('id= %5d  path= %s', int(chid), oflds[chid])
 
+    #  Get the trending data either from local saved files or via
+    #  trending db queries to the rest service
     if optlist.input_file:
         # get input from these files rather than trending service
         # an issue is that the input file need not have the
@@ -300,11 +288,11 @@ def main():
             del tree
 
     else:
-        # put the rest server query responses into a list
+        # query the rest server query and place responses into a list
         # join the ids requested as "id0&id=id1&id=id2..." for query
         idstr = '&id='.join(id for id in oflds)
         responses = []
-        for ival in intervals:
+        for ival in intervals:  # only one interval per query allowed
             if optlist.timebins == 0:  # autosize it
                 logging.debug('timebins=0')
                 if int((ival[1] - ival[0])/1000) < 300:  # just get raw data
@@ -313,10 +301,11 @@ def main():
                 else:
                     logging.debug('ival[1]= %d, ival[0]= %d', ival[1], ival[0])
                     optlist.timebins = int(((ival[1] - ival[0])/1000.0) / 60.0)
-            logging.debug("timebins= {}".format(optlist.timebins))
+            logging.debug('timebins= %d', optlist.timebins)
             res = query_rest_server(ival[0], ival[1],
                                     data_url, idstr, optlist.timebins)
             responses.append(res)
+    # Now have the data from trending service
 
     # Output to stdout a well formed xml tree aggregating the xml received
     # Main use is to save to local file, and re-use for subsequent queries
@@ -332,7 +321,12 @@ def main():
                 os.write(1, etree.tostring(
                     data, encoding="UTF-8",
                     xml_declaration=False, pretty_print=True))
-        os.write(1, b'</datas>')
+        try:
+            os.write(1, b'</datas>')
+        except OSError:
+            # 'Broken pipe' OSError when stdout is closed
+            pass
+
         exit(0)
 
     # Translate the xml responses into internal arrays etc.
@@ -362,8 +356,9 @@ def main():
             if chid not in oflds:
                 continue
             if path is None or oflds[chid] != path:
-                logging.error('inputpath(id=%s): %s != %s (xmlpath), using %s',
-                              chid, oflds[chid], path, oflds[chid])
+                logging.warning(
+                    'inputpath(id=%s): %s != %s (xmlpath), using %s',
+                    chid, oflds[chid], path, oflds[chid])
                 path = oflds[chid]
                 # continue
             # first check for existing....
@@ -384,6 +379,8 @@ def main():
             #
             if chid not in chanmd:  # check if already exists
                 chanmd[chid] = dict()
+            # metadata:
+            # parse all but only using units for now
             for mdval in data.iter('channelmetadatavalue'):
                 if mdval.keys():  # empty sequence is false
                     mdname = mdval.attrib.get('name')  # key
@@ -417,7 +414,8 @@ def main():
                         chandata[chid].append((tstamp, tvalue))
                         break
 
-    # done with responses, delete all the raw xml responses
+    # Done ranslating the xml responses into internal arrays etc.
+    # Delete all the raw xml responses
     logging.debug('processed %d xml channel responses', len(responses))
     logging.debug('processed %d uniq channel requests', len(chanspec))
     logging.debug('processed %d total channel queries', datacnt)
@@ -638,6 +636,7 @@ def main():
                 if optlist.overlay:
                     axcnt = 0
                 ax = np.ravel(axes)[axcnt]
+                # ax.grid(True)
                 logging.debug('axcnt= %d  idx= %d', axcnt, idx)
                 # mask the tstamps outside of the interval
                 mask = ((intervals[idx][0] < tstamp) &
@@ -792,7 +791,7 @@ def query_rest_server(ts1, ts2, data_url, idstr, nbins):
        inputs:
            t1, t2 are start/stop time in ms
            data_url is url w/out args
-           idstr is string with all channel ids
+           idstr is all channel ids as '&id='.join(id for id in oflds)
            nbins: request raw or binned data from DB
        output: raw xml response from the service is returned
     """
@@ -833,26 +832,23 @@ def get_unique_time_intervals(optlist):
             as [[t00,t01], [t10,t11], ...,[tn0,tn1]]
     """
     intervals = []
-    duration = optlist.duration
     if optlist.interval:
         for interval in optlist.interval:
             (t1, t2) = tu.get_time_interval(interval[0], interval[1])
             intervals.append([t1, t2])
     elif optlist.start:
         for start in optlist.start:
-            (t1, t2) = tu.get_time_interval(start, None, duration)
+            (t1, t2) = tu.get_time_interval(start, None, optlist.duration)
             intervals.append([t1, t2])
     elif optlist.stop:
         for stop in optlist.stop:
-            (t1, t2) = tu.get_time_interval(None, stop, duration)
+            (t1, t2) = tu.get_time_interval(None, stop, optlist.duration)
             intervals.append([t1, t2])
     else:
-        (t1, t2) = tu.get_time_interval(None, None, duration)
+        (t1, t2) = tu.get_time_interval(None, None, optlist.duration)
         intervals.append([t1, t2])
 
     for interval in intervals:
-        interval[0] = interval[0]
-        interval[1] = interval[1]
         if interval[0] is None or interval[1] is None:
             logging.error("Date assignment failed")
             return None
@@ -888,6 +884,36 @@ def get_unique_time_intervals(optlist):
             i += 1
 
     return intervals
+
+
+def get_channel_dict(channel_file):
+    """
+    build a channel dictionary for all channels
+    struction of channel_file is:
+    0: datachannels [-]
+      1: datachannel [-]
+        2: path [-]
+          3: pathelement [-]
+      2: id [-]
+      2: metadata [name, value]
+    """
+    logging.debug('building full channel dictionary from %s', channel_file)
+    cdict = dict()
+    tree = etree.parse(channel_file)
+    root = tree.getroot()
+    for dchan in root.iterfind('datachannel'):
+        chid = dchan.find('id').text
+        # build path
+        parr = []  # list to hold path elements
+        pp = dchan.find('path')
+        for pe in pp.iterfind('pathelement'):
+            parr.append(pe.text)
+        path = '/'.join(parr)
+        if path and chid:  # create entry in dict
+            cdict[chid] = path
+    logging.debug('channel dict contains %d active channels', len(cdict))
+    del tree
+    return cdict
 
 
 if __name__ == '__main__':
