@@ -262,7 +262,7 @@ def update_trending_channels_xml(tstart=None, tstop=None):
         # If tstart is inside the interval: [xml_start, last_update]
         # then can guarantee desired channels were being published
         # and hence are already in the cached file.
-        if tstart and xml_start_epoch < tstart < statinfo.st_mtime:
+        if tstart and xml_start_epoch < tstart < statinfo.st_mtime + 43200:
             if not tstop or tstop < (statinfo.st_mtime + 86400):
                 update = False
 

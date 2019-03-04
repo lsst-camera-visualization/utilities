@@ -360,12 +360,12 @@ def main():
                     'inputpath(id=%s): %s != %s (xmlpath), using %s',
                     chid, oflds[chid], path, oflds[chid])
                 path = oflds[chid]
-                # continue
-            # first check for existing....
-            if chid in chanspec and chanspec[chid]['path'] != path:
-                logging.warning('path mismatch for channel_id= %d', chid)
-                logging.warning('  %s != %s, skipping....',
-                                chanspec[chid]['path'], path)
+            # check if chid in
+            if chid in chanspec:
+                if chanspec[chid]['path'] != path:
+                    logging.warning('path mismatch for channel_id= %d', chid)
+                    logging.warning('  %s != %s, skipping....',
+                                    chanspec[chid]['path'], path)
             else:
                 chanspec[chid] = dict()
                 chanspec[chid]['path'] = path
