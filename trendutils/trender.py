@@ -147,15 +147,15 @@ def main():
     # deal with interval accounting
     intcnt = len(intervals)
     inttot = int(sum([t[1] - t[0] for t in intervals])/1000)
-    intmax = int(max([t[1] - t[0] for t in intervals])/1000)
+    # intmax = int(max([t[1] - t[0] for t in intervals])/1000)
     tmin = intervals[0][0]
     tmax = intervals[-1][1]
     tz_trending = tu.tz_trending
 
     trending_server = tu.get_trending_server()
     if trending_server:
-        data_url = "http://{}:8080/rest/data/dataserver".format(
-            trending_server)
+        data_url = "http://{}:{}/rest/data/dataserver".format(
+            trending_server, tu.default_port)
     else:
         logging.error('failed to contact trending server')
         exit(1)

@@ -14,6 +14,7 @@ from dateutil.tz import tzutc
 
 # constants? for lack of a better term (default to slac)
 trendnetre = r"134\.79\.[0-9]*\.[0-9]*"
+default_port = "8080"
 default_trending_server = "lsst-mcm.slac.stanford.edu"
 tz_trending = 'America/Los_Angeles'
 
@@ -31,12 +32,12 @@ def get_all_channels(maxidle=-1):
     trending_server = get_trending_server()
     if not trending_server:
         return None
-    listpathroot = "8080/rest/data/dataserver/listchannels?maxIdleSeconds="
+    listpathroot = "/rest/data/dataserver/listchannels?maxIdleSeconds="
     if maxidle:
         listpath = "{}{:d}".format(listpathroot, int(maxidle))
     else:
         listpath = "{}{:s}".format(listpathroot, "-1")
-    url = "http://{}:{}".format(trending_server, listpath)
+    url = "http://{}:{}{}".format(trending_server, default_port, listpath)
     logging.debug('url=%s', url)
 
     # creating HTTP response object from given url
@@ -126,7 +127,7 @@ def get_trending_server():
     # test connection to trending server, just get head to verify
     #
     try:
-        requests.head("http://{}:8080".format(trending_server))
+        requests.head("http://{}:{}".format(trending_server, default_port))
     except requests.ConnectionError as e:
         logging.error('ConnectionError: %s', e)
         logging.error('check status connection to trending server: %s',
@@ -281,6 +282,10 @@ def update_trending_channels_xml(tstart=None, tstop=None):
             active_since_str = datetime.fromtimestamp(xstart).isoformat(
                 timespec='seconds')
             root.set("activeSinceDate", active_since_str)
+            logging.warning('setting activeSinceDate= %s (missing in res)',
+                            active_since_str)
+        else:
+            logging.debug('activeSinceDate= %s found', active_since)
         if xmlstring:
             tree = etree.ElementTree(root)
             tree.write(channel_file, xml_declaration=True,
@@ -298,7 +303,7 @@ def convert_to_seconds(duration_str):
 
     seconds = 0
     if re.match(r"[0-9]+$", duration_str):
-        seconds = int(duration_str[:-1])
+        seconds = int(duration_str)
     elif re.match(r"[0-9]+s$", duration_str):
         seconds = int(duration_str[:-1])
     elif re.match(r"[0-9]+m$", duration_str):
