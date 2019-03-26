@@ -519,8 +519,8 @@ def main():
         print("#     tmax=\"{}\"".format(
             dt.datetime.fromtimestamp(
                 tmax/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
-        print("# {:>4s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} ".format(
-            'cnt', 'mean', 'median', 'stddev', 'min', 'max'), end="")
+        print("# {:>4s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} {:>11s}".format(
+            'cnt', 'mean', 'median', 'stddev', 'min', 'max', 'd/dt 1/m'), end="")
         if optlist.rstats:
             print("{:>8s} {:>8s} {:>8s}  ".format(
                 'rmean', 'rmedian', 'rstddev'), end="")
@@ -538,6 +538,11 @@ def main():
                 std = np.std(y)
                 npmin = np.min(y)
                 npmax = np.max(y)
+                npgrad = np.gradient(y, tstamp)
+                if npgrad.size > 4:
+                    grad = 60 * 1000 * npgrad[-4:].sum() / 4.0
+                else:
+                    grad = 60 * 1000 * npgrad[-1]
                 if optlist.rstats:
                     rmean, rmedian, rstd = stats.sigma_clipped_stats(y)
             else:
@@ -547,6 +552,7 @@ def main():
                 print("{:>6g} {:>8.3g} {:>8.3g} {:>8.2g} ".format(
                     nelem, avg, med, std,), end="")
                 print("{:>8.3g} {:>8.3g} ".format(npmin, npmax), end="")
+                print("{:>11.2g} ".format(grad), end="")
                 if optlist.rstats:
                     print("{:>8.3g} {:>8.3g} {:>8.2g}   ".format(
                         rmean, rmedian, rstd), end="")
@@ -757,10 +763,10 @@ def main():
                 labels, handles = (
                     list(t) for t in zip(*sorted(zip(labels, handles))))
                 if labels:
-                    if len(handles) < 4:  # place in the box
+                    if len(handles) < 6:  # place in the box
                         ax.legend(handles, labels, loc='best', fancybox=True,
                                   framealpha=0.5, fontsize='x-small')
-                    elif len(handles) < 8:  # place to right, small
+                    elif len(handles) < 12:  # place to right, small
                         ax.legend(handles, labels, loc='upper left',
                                   bbox_to_anchor=(1, 1), fontsize='small')
                     elif len(handles) < 25:  # place to right, xx-small
