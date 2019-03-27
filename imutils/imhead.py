@@ -43,7 +43,7 @@ def main():
         else:
             header_print(optlist, hdulist)
         hdulist.close()
-        exit(0)
+    exit(0)
 
 
 def header_print(opts, hdulist):
@@ -106,7 +106,7 @@ def header_print(opts, hdulist):
                                                 endcard=False, padding=False))
     hdulist.close()
     try:
-        print('%s', '\n'.join(text))
+        print('\n'.join(text))
     except IOError:
         # A 'Broken pipe' IOError may occur when stdout is closed prematurely
         pass
