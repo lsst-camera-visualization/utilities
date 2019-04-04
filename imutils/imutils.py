@@ -151,9 +151,9 @@ def subtract_bias(optlist, hduids, hdulist):
                 else:
                     (b1, b2) = (0, x1)
             reg = "[{}:{},*]".format(b1, b2)
-        elif len(optlist.bias) == 1:
+        elif len(optlist.bias) >= 3:  # eg. a:b is minimum spec size
             # peel off outer brackets
-            reg = re.sub(r"^\[*([^\]]*)\]*$", r"\1", optlist.bias)
+            reg = re.sub(r"^\[*([0-9]+:[0-9]+)\]*$", r"\1", optlist.bias)
             # recast as a column selection region
             reg = "[{},*]".format(reg)
         else:
