@@ -54,16 +54,16 @@ def header_print(opts, hdulist):
     otherlist = {}    # dict to hold non-image HDU's (except for primary)
     if opts.hduname:
         index = hdulist.index_of(opts.hduname)
-        hdu = hdulist[index]
+        hdr = hdulist[opts.hduindex].header
         text.append("#--------{}---------".format(opts.hduname))
         text.append(
-            hdu.header.tostring(sep='\n', endcard=False, padding=False))
+            hdr.tostring(sep='\n', endcard=False, padding=False))
     # print single hdu by index
     elif opts.hduindex:
-        hdu = hdulist[opts.hduindex]
+        hdr = hdulist[opts.hduindex].header
         text.append("#--------extension {}---------".format(opts.hduindex))
         text.append(
-            hdu.header.tostring(sep='\n', endcard=False, padding=False))
+            hdr.tostring(sep='\n', endcard=False, padding=False))
     # print primary and Image headers, others optionally
     else:
         # build dicts etc. to facilitate processing
@@ -76,34 +76,34 @@ def header_print(opts, hdulist):
             else:
                 otherlist[hdu.name] = index
         # print the primary
-        hdu = hdulist[pindex]
+        hdr = hdulist[pindex].header
         text.append("#--------{}---------".format(hdu.name))
         text.append(
-            hdu.header.tostring(sep='\n', endcard=False, padding=False))
+            hdr.tostring(sep='\n', endcard=False, padding=False))
         # print the Image headers
         if opts.unsorted:
             # in original index order
             # for hdu in hdulist:
             ids = list(seglist.values())
             for index in sorted(ids):
-                hdu = hdulist[index]
-                text.append(hdu.header.tostring(
+                hdr = hdulist[index].header
+                text.append(hdr.tostring(
                     sep='\n', endcard=False, padding=False))
         else:
             # sorted by name (default)
             for name, index in sorted(seglist.items()):
-                hdu = hdulist[index]
+                hdr = hdulist[index].header
                 text.append("#--------{}---------".format(name))
-                text.append(hdu.header.tostring(
+                text.append(hdr.tostring(
                     sep='\n', endcard=False, padding=False))
         # print the other headers
         if opts.all:
             ids = list(otherlist.values())
             for index in sorted(ids):
-                hdu = hdulist[index]
+                hdr = hdulist[index].header
                 text.append("#--------{}---------".format(hdu.name))
-                text.append(hdu.header.tostring(sep='\n',
-                                                endcard=False, padding=False))
+                text.append(hdr.tostring(sep='\n',
+                                         endcard=False, padding=False))
     hdulist.close()
     try:
         print('\n'.join(text))

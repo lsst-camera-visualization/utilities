@@ -414,7 +414,7 @@ def main():
                         chandata[chid].append((tstamp, tvalue))
                         break
 
-    # Done ranslating the xml responses into internal arrays etc.
+    # Done ranslating the xml responses into internal lists etc.
     # Delete all the raw xml responses
     logging.debug('processed %d xml channel responses', len(responses))
     logging.debug('processed %d uniq channel requests', len(chanspec))
@@ -422,13 +422,13 @@ def main():
     del responses
 
     # chanspec = dict()  # where keys are chids, values are ccs paths
-    # chanmd = dict()  # key is chid, elements will be dicts holding arrays
-    # chandata = dict() # key is chid, elements are (time, value) pair arrays
+    # chanmd = dict()  # key is chid, elements will be dicts holding lists
+    # chandata = dict() # key is chid, elements are (time, value) pair lists
     # so all responses processed, now have data organized by a set of dicts
     # with the the index on channel id.  Multiple queries for a given channel
     # id are grouped together and there could be duplicate values.
     #
-    # To facilitate operating on the data, transform from list[] based data
+    # To facilitate operating on the data, transform chandat from list[] based
     # (which was easy to append to) to np.array based data.
     chandt = np.dtype({'names': ['tstamp', 'value'],
                        'formats': ['int', 'float']})
@@ -478,23 +478,28 @@ def main():
             tmin/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
         print("#     tmax={}: \"{}\"".format(tmax, dt.datetime.fromtimestamp(
             tmax/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
-        print("#{:<{wt}s}  {:>{wv}s}  {:<{wu}s}  {:<s}"
-              .format(" \'timestamp (ms)\'", "\'value\'",
+        print("#{:<{wt}s} {:>{wv}s} {:<{wu}s}  {:<{wp}s}  {:<{wd}s}"
+              .format(" \'time (ms)\'", "\'value\'",
                       "\'unit\'", "\'channel CCS path\'",
-                      wt=17, wv=9, wu=6))
-        # loop over all channels
-        # for chid in chanspec
-        for chid in chanspec:
+                      "\'iso-8601 Date\'",
+                      wt=13, wv=9, wu=6, wp=30, wd=30))
+        # loop over all channels sorted on units then path
+        for chid in sorted(chanspec.keys(),
+                           key=lambda x: (
+                               chanspec[x]['units'], chanspec[x]['path'])):
             path = chanspec[chid]['path']
             unitstr = chanspec[chid]['units']
             if np.size(chandata[chid]) == 0:
                 continue
             for (tstamp, value) in chandata[chid]:
                 try:
+                    date = dt.datetime.fromtimestamp(
+                        tstamp/1000.0, gettz(tz_trending)).isoformat(
+                            timespec='milliseconds')
                     print(
-                        "{:<{wt}d} {:>{wv}g} {:>{wu}s} {:<s}".format(
-                            int(tstamp), float(value), unitstr, path,
-                            wt=18, wv='9.4', wu=6))
+                        "{:<{wt}d} {:>{wv}g} {:>{wu}s}   {:<{wp}s}   {:<{wd}s}".format(
+                            int(tstamp), float(value), unitstr, path, date,
+                            wt=14, wv='9.4', wu=6, wp=30, wd=30))
                 except IOError:
                     # 'Broken pipe' IOError when stdout is closed
                     pass
@@ -526,7 +531,10 @@ def main():
                 'rmean', 'rmedian', 'rstddev'), end="")
         print(" {:<{wt}s} {:>{wu}s}".format('path', 'units', wt=40, wu=6))
 
-        for chid in chanspec:
+        # loop over all channels sorted on units then path
+        for chid in sorted(chanspec.keys(),
+                           key=lambda x: (
+                               chanspec[x]['units'], chanspec[x]['path'])):
             path = chanspec[chid]['path']
             unitstr = chanspec[chid]['units']
             tstamp = chandata[chid]['tstamp']
@@ -538,11 +546,15 @@ def main():
                 std = np.std(y)
                 npmin = np.min(y)
                 npmax = np.max(y)
-                npgrad = np.gradient(y, tstamp)
-                if npgrad.size > 4:
-                    grad = 60 * 1000 * npgrad[-4:].sum() / 4.0
+                if y.size > 5:
+                    # silly but better than taking last value
+                    npgrad = np.gradient(y, tstamp)
+                    grad = 60 * 1000 * (npgrad[-4] * 1.0 +
+                                        npgrad[-3] * 1.0 +
+                                        npgrad[-2] * 1.0 +
+                                        npgrad[-1] * 1.0) / 4.0
                 else:
-                    grad = 60 * 1000 * npgrad[-1]
+                    grad = math.nan
                 if optlist.rstats:
                     rmean, rmedian, rstd = stats.sigma_clipped_stats(y)
             else:
@@ -578,7 +590,10 @@ def main():
         if optlist.overlayunits:  # axis set per unit
             unit_order = dict()
             unit_idx = 0  # counts types of units
-            for chid in chanspec:
+            # loop over all channels sorted on units then path
+            for chid in sorted(chanspec.keys(),
+                               key=lambda x: (
+                                   chanspec[x]['units'], chanspec[x]['path'])):
                 unit = chanspec[chid]['units']
                 if unit not in unit_order:
                     unit_order[unit] = unit_idx
