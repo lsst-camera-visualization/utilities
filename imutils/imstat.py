@@ -47,6 +47,8 @@ def parse_args():
                         help="add tearing metric to quicklook output")
     parser.add_argument("--dipoles", action='store_true',
                         help="add dipole metric to quicklook output")
+    parser.add_argument("--threshold", nargs=1, metavar='thresh',
+                        help="count number of pixels above threshold")
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
     parser.add_argument("--debug", action='store_true',
@@ -225,11 +227,11 @@ def quicklook(optlist, hduids, hdulist):
         p_bias_buf = pix[y1:y2, x1:x2]
         logging.debug('p_bias_buf = pix[%s:%s, %s:%s]', y1, y2, x1, x2)
         logging.debug('shape(p_bias_buf)=%s', np.shape(p_bias_buf))
-        quicklook_print(optlist, hduid, name, sig_buf,
+        quicklook_print(optlist, hduid, name, pix, sig_buf,
                         bias_buf, p_bias_buf, expt)
 
 
-def quicklook_print(optlist, sid, name, sig_buf,
+def quicklook_print(optlist, sid, name, pix, sig_buf,
                     bias_buf, p_bias_buf, expt):
     """perform and print the given statistics quantities
        fields are: mean, bias, signal, noise, adu/s
@@ -240,6 +242,9 @@ def quicklook_print(optlist, sid, name, sig_buf,
         quick_fields.append("tearing")
     if optlist.dipoles:
         quick_fields.append("dipoles")
+    if optlist.threshold:
+        quick_fields.append("threshold")
+
     if not optlist.noheadings and ncalls.counter == 0:
         print("#{:>3s} {:>9s}".format("id", "HDUname"), end="")
         if "mean" in quick_fields:
@@ -260,6 +265,8 @@ def quicklook_print(optlist, sid, name, sig_buf,
             print("{:>15s}".format("tearing: L  R"), end="")
         if "dipoles" in quick_fields:
             print("{:>9s}".format("%dipoles"), end="")
+        if "threshold" in quick_fields:
+            print("{:>9s}".format("N>thresh"), end="")
         print("")  # newline)
 
     if not optlist.noheadings:
@@ -292,6 +299,7 @@ def quicklook_print(optlist, sid, name, sig_buf,
         x1 = ncols-1
         logging.debug('s_n=sig_buf[%s:%s,%s:%s]', y1, y2, x0, x1)
         s_n = sig_buf[y1:y2, x0:x1]
+        # define region to measure bias
         (nrows, ncols) = np.shape(bias_buf)
         l_ncols = 3
         bias_mean = np.mean(bias_buf[y1:y2, l_ncols:ncols])
@@ -372,15 +380,15 @@ def quicklook_print(optlist, sid, name, sig_buf,
     # ---------
     if "dipoles" in quick_fields:
         logging.debug('dipoles check----------')
-    # region to work on is sig_buf, say 200 rows near top)
-    # transpose to column order)
-    # find sigma-clipped mean, median and stdev)
-    # subtract mean from array)
-    # divide the array by sigma)
-    # go through array finding pixel pairs of differing sign)
-    # and where |A(n)-A(n+1)| > 6)
-    # add one to counter each time such a pair is found)
-    # print out the % of pixels occupied by dipoles)
+        # region to work on is sig_buf, say 200 rows near top)
+        # transpose to column order)
+        # find sigma-clipped mean, median and stdev)
+        # subtract mean from array)
+        # divide the array by sigma)
+        # go through array finding pixel pairs of differing sign)
+        # and where |A(n)-A(n+1)| > 6)
+        # add one to counter each time such a pair is found)
+        # print out the % of pixels occupied by dipoles)
         (nrows, ncols) = np.shape(sig_buf)
         arr1 = sig_buf[-int(nrows/10):-1, :]  # use top 10% of array)
         logging.debug('using subarray [%s:%s,:]', -int(nrows/10), -1)
@@ -399,6 +407,13 @@ def quicklook_print(optlist, sid, name, sig_buf,
             100.0*float(2*ndipole)/(np.size(arr1))), end="")
     print("")  # newline)
     ncalls()  # track call count, acts like static variable)
+    # ---------
+    if "threshold" in quick_fields:
+        logging.debug('threshold check----------')
+        # region to work on is sig_buf
+        print("{:>9d}".format(
+            np.size(np.where(np.reshape(pix, -1) >= optlist.threshold))),
+              end="")
 
 
 def ncalls():

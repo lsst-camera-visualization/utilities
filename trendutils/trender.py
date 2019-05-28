@@ -21,6 +21,7 @@ import trendutils as tu
 
 # plt.rcParams['text.usetex'] = True
 # plt.rcParams['figure.autolayout'] = True
+plt.style.use('ggplot')
 
 if sys.version_info[0] < 3 or sys.version_info[1] < 7:
     raise Exception("Must be using Python >=3.7")
@@ -629,7 +630,7 @@ def main():
         if optlist.overlay:  # just one plot box
             fig, axes = plt.subplots(1, 1)
         else:
-            (fig_width, fig_height) = plt.rcParams["figure.figsize"]
+            fig_width, fig_height = plt.rcParams["figure.figsize"]
             fig, axes = plt.subplots(nrows, ncols, sharex=False,
                                      figsize=(fig_width*1.6, fig_height))
 
@@ -695,6 +696,8 @@ def main():
                                             tz=gettz(tz_trending))
                     if not ax.get_ylabel():
                         ax.set_ylabel("{}".format(unit))
+                        ax.ticklabel_format(
+                            axis='y', style='sci', scilimits=(-3, 5))
                     # xlabel for this axis
                     if not ax.get_xlabel():
                         xlabel_str = "{} (tstart)".format(
