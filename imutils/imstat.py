@@ -141,7 +141,7 @@ def stats_print(optlist, sid, name, buf, reg):
     if "median" in optlist.stats:
         print(" {:>8g}".format(np.median(buf)), end="")
     if "stddev" in optlist.stats:
-        print(" {:>7.2g}".format(np.std(buf)), end="")
+        print(" {:>7.4g}".format(np.std(buf)), end="")
     if "min" in optlist.stats:
         print(" {:>7g}".format(np.min(buf)), end="")
     if "max" in optlist.stats:
