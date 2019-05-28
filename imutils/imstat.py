@@ -256,7 +256,7 @@ def quicklook_print(optlist, sid, name, pix, sig_buf,
         if "noise" in quick_fields:
             print(" {:>7s}".format("noise"), end="")
         if "adu/sec" in quick_fields and expt > 0:
-            print("{:>8s}".format("adu/sec"), end="")
+            print("{:>9s}".format("adu/sec"), end="")
         if "eper:s-cte" in quick_fields:
             print("{:>9s}".format("s-cte"), end="")
         if "eper:p-cte" in quick_fields:
@@ -287,7 +287,7 @@ def quicklook_print(optlist, sid, name, pix, sig_buf,
             np.std(bias_buf[int(nrows/2-nrows/20):int(nrows/2+nrows/20),
                             3:ncols-2])), end="")
     if "adu/sec" in quick_fields and expt > 0:
-        print("{:>8.2f}".format(float(signal)/expt), end="")
+        print(" {:>8.2f}".format(float(signal)/expt), end="")
     if "eper:s-cte" in quick_fields:
         logging.debug('s-cte------------------')
         (nrows, ncols) = np.shape(sig_buf)
