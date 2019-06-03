@@ -58,7 +58,7 @@ def parse_region(reg):
     # no match found, bad spec
     else:
         logging.error('bad region spec: \'%s\' no match produced', reg)
-        retval = None
+        retval = (None, None)
     #
     return retval
 
@@ -76,22 +76,22 @@ def get_hduids(optlist, hdulist):
             except KeyError as ke:
                 logging.error('KeyError: %s', ke)
                 logging.error('HDU[%s] not found, skipping', hduname)
-    elif optlist.hduindex:
+    if optlist.hduindex:
         for hduid in optlist.hduindex:
             try:
                 hdu = hdulist[hduid]
                 chduids.append(hduid)
             except IndexError:
                 logging.error('HDU[%d] not found, skipping', hduid)
-    else:  # all segments with pixel data
+    if not optlist.hduindex and not optlist.hduname:
         for hdu in hdulist:
             chduids.append(hdulist.index(hdu))
 
-    # Validate the list of candidate HDUs
+    # Validate the list of candidate HDUs, keep those with pixels
     hduids = []
     for hduid in chduids:
         hdu = hdulist[hduid]
-        if isinstance(hdu, fits.PrimaryHDU):
+        if isinstance(hdu, fits.PrimaryHDU): #- check for data
             if np.shape(hdu.data):
                 logging.debug('adding %s with index %d to hduid list',
                               hdu.name, hdulist.index_of(hdu.name))
@@ -113,7 +113,7 @@ def subtract_bias(optlist, hduids, hdulist):
     Subtract a bias (column or const) from the hdus in hduids.
     Choices are mean, median or byrow subtraction of a bias calculated
     in either a given set of columns or using DATASEC to infer the
-    overscan region.
+    overscan region.  Using DATASEC skips the 1st 4 columns of overscan.
     """
     logging.debug('processing bias subtraction')
     for hduid in hduids:  # process each with regions

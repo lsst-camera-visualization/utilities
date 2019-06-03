@@ -77,7 +77,7 @@ def header_print(opts, hdulist):
                 otherlist[hdu.name] = index
         # print the primary
         hdr = hdulist[pindex].header
-        text.append("#--------{}---------".format(hdu.name))
+        text.append("#--------{}---------".format(hdulist[pindex].name))
         text.append(
             hdr.tostring(sep='\n', endcard=False, padding=False))
         # print the Image headers
@@ -102,6 +102,8 @@ def header_print(opts, hdulist):
             for index in sorted(ids):
                 hdr = hdulist[index].header
                 text.append("#--------{}---------".format(hdu.name))
+                text.append("#--------{}---------".format(
+                    hdulist[index].name))
                 text.append(hdr.tostring(sep='\n',
                                          endcard=False, padding=False))
     hdulist.close()
