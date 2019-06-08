@@ -483,7 +483,7 @@ def main():
               .format(" \'time (ms)\'", "\'value\'",
                       "\'unit\'", "\'channel CCS path\'",
                       "\'iso-8601 Date\'",
-                      wt=13, wv=9, wu=6, wp=30, wd=30))
+                      wt=13, wv=12, wu=6, wp=30, wd=30))
         # loop over all channels sorted on units then path
         for chid in sorted(chanspec.keys(),
                            key=lambda x: (
@@ -498,9 +498,9 @@ def main():
                         tstamp/1000.0, gettz(tz_trending)).isoformat(
                             timespec='milliseconds')
                     print(
-                        "{:<{wt}d} {:>{wv}g} {:>{wu}s}   {:<{wp}s}   {:<{wd}s}".format(
+                        "{:<{wt}d} {:>{wv}g} {:>{wu}s}   {:<{wp}s}  {:<{wd}s}".format(
                             int(tstamp), float(value), unitstr, path, date,
-                            wt=14, wv='9.4', wu=6, wp=30, wd=30))
+                            wt=14, wv='12.7', wu=6, wp=30, wd=30))
                 except IOError:
                     # 'Broken pipe' IOError when stdout is closed
                     pass
