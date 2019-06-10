@@ -84,7 +84,7 @@ def main():
             print("#")
             print("# {}".format(os.path.basename(ffile)))
         # Construct a list of the HDU's to work on
-        hduids = iu.get_hduids(optlist, hdulist)
+        hduids = iu.get_requested_image_hduids(optlist, hdulist)
         if optlist.quicklook:
             quicklook(optlist, hduids, hdulist)
         else:

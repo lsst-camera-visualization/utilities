@@ -178,7 +178,7 @@ def main():
                     continue
 
                 # construct a list of the HDU's to work on
-                hduids = iu.get_hduids(optlist, hdulist)
+                hduids = iu.get_requested_image_hduids(optlist, hdulist)
                 if hduids is None:
                     logging.error('No valid HDUs found in %s',
                                   optlist.hduname or optlist.hduindex)

@@ -78,7 +78,7 @@ def main():
             hdulist.info()
             continue
         # Construct a list of the HDU's to work on
-        hduids = iu.get_hduids(optlist, hdulist)
+        hduids = iu.get_requested_image_hduids(optlist, hdulist)
 
         # loop over hdu's
         hducnt = 0
