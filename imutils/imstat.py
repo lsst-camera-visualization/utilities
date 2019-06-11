@@ -47,7 +47,7 @@ def parse_args():
                         help="add tearing metric to quicklook output")
     parser.add_argument("--dipoles", action='store_true',
                         help="add dipole metric to quicklook output")
-    parser.add_argument("--threshold", nargs=1, metavar='thresh',
+    parser.add_argument("--threshold", nargs=1, metavar='thresh', type=float,
                         help="count number of pixels above threshold")
     parser.add_argument("--info", action='store_true',
                         help="print the info() table summarizing file")
@@ -405,15 +405,17 @@ def quicklook_print(optlist, sid, name, pix, sig_buf,
         logging.debug('dipole count = %s', ndipole)
         print("{:>9.2f}".format(
             100.0*float(2*ndipole)/(np.size(arr1))), end="")
-    print("")  # newline)
-    ncalls()  # track call count, acts like static variable)
     # ---------
     if "threshold" in quick_fields:
         logging.debug('threshold check----------')
         # region to work on is sig_buf
+        arr = pix.flatten('F')
+        thresh = optlist.threshold
         print("{:>9d}".format(
-            np.size(np.where(np.reshape(pix, -1) >= optlist.threshold))),
-              end="")
+            np.count_nonzero(np.asarray(arr >= thresh)), end=""))
+    # ---------
+    print("")  # newline)
+    ncalls()  # track call count, acts like static variable)
 
 
 def ncalls():
