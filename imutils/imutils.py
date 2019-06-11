@@ -283,8 +283,9 @@ def subtract_bias(bstring, btype, hdu):
         # get sigma clipped median per row
         so_avg, so_bias, so_std = stats.sigma_clipped_stats(
             hdu.data[soscan], axis=1)
-        sbias = so_bias.data[~so_bias.mask]
-        hdu.data = hdu.data - sbias[:, None]
+        so_bias = so_bias.reshape(np.shape(so_bias)[0], 1)
+        logging.debug("np.shape(so_bias)={}".format(np.shape(so_bias)))
+        hdu.data = hdu.data - so_bias.data
     elif btype == 'mean':
         bias = np.mean(hdu.data[soscan])
         hdu.data = hdu.data - bias
@@ -295,18 +296,18 @@ def subtract_bias(bstring, btype, hdu):
         # get sigma clipped median per row
         so_avg, so_bias, so_std = stats.sigma_clipped_stats(
             hdu.data[soscan], axis=1)
-        sbias = so_bias.data[~so_bias.mask]
-        hdu.data = hdu.data - sbias[:, None]
+        so_bias = so_bias.reshape(np.shape(so_bias)[0], 1)
+        logging.debug("np.shape(so_bias)={}".format(np.shape(so_bias)))
+        hdu.data = hdu.data - so_bias.data
         # get sigma clipped median per column
         logging.debug('poscan=((%d, %d), (%d, %d))',
                       poscan[0].start, poscan[0].stop,
                       poscan[1].start, poscan[1].stop)
         po_avg, po_bias, po_std = stats.sigma_clipped_stats(
             hdu.data[poscan], axis=0)
+        po_bias = po_bias.reshape(1, np.shape(po_bias)[0])
         logging.debug("np.shape(po_bias)={}".format(np.shape(po_bias)))
-        pbias = po_bias.data[~po_bias.mask]
-        logging.debug("np.shape(pbias)={}".format(np.shape(pbias)))
-        hdu.data = hdu.data - pbias[None, :]
+        hdu.data = hdu.data - po_bias.data
     else:
         logging.error('btype: %s not valid', btype)
         exit(1)
