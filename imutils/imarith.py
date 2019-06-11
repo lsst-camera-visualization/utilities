@@ -10,9 +10,7 @@ import logging
 import textwrap
 import datetime
 import os.path
-import warnings
 from astropy.io import fits
-from astropy.utils.exceptions import AstropyWarning
 from astropy import wcs
 import numpy as np
 import imutils as iu
@@ -54,9 +52,9 @@ def parse_args():
     parser.add_argument("--region", help="region fmt: \"x1:x2, y1:y2\"")
     parser.add_argument("--bias", nargs='?', metavar='cols', const='overscan',
                         help="subtract bias, fmt: \"x1:x2\"")
-    parser.add_argument("--btype", choices=['mean', 'median', 'byrow'],
-                        help="bias subtract by-row (def) or constant",
-                        default='byrow')
+    parser.add_argument("--btype", default='byrow',
+                        choices=['mean', 'median', 'byrow', 'byrowcol'],
+                        help="bias subtract by-row (def) or constant")
     parser.add_argument("--debug", action='store_true',
                         help="print additional debugging messages")
     return parser.parse_args()
@@ -65,8 +63,8 @@ def parse_args():
 def main():
     """main logic:"""
     optlist = parse_args()
-    init_logging(optlist.debug)
-    warnings.simplefilter('ignore', category=AstropyWarning)
+    iu.init_logging(optlist.debug)
+    iu.init_warnings()
 
     # evaluate operands as either a filename, float, floats or error
     op1_type = get_operand_type(optlist.operand1)
@@ -92,19 +90,14 @@ def main():
         operand2 = optlist.operand2.split()  # list of floats as strings
 
     # create output image with primary header and updates
-    hdulisto = create_output_hdulist(hdulist1, sys.argv)
+    hdulisto = iu.create_output_hdulist(hdulist1, sys.argv)
 
     # loop over HDU id's from Master file, copy non-image HDUs
     # and process the image HDUs accordingly
-    hduids = iu.get_hduids(optlist, hdulist1)
+    hduids = iu.get_requested_image_hduids(optlist, hdulist1)
     if hduids is None:
         logging.info('No data HDUs found or requested')
         exit(1)
-    # subtract a bias if requested
-    if optlist.bias:
-        iu.subtract_bias(optlist, hduids, hdulist1)
-        if hdulist2:
-            iu.subtract_bias(optlist, hduids, hdulist2)
     for hduid in hduids:  # process these images
         #
         if hdulist2 and np.shape(hdulist1[hduid].data) != \
@@ -114,11 +107,20 @@ def main():
         #
         # prepare the output hdu
         if not optlist.region:
-            hduoid = init_hdu(hdulist1[hduid], hdulisto)
+            hduoid = iu.init_hdu(hdulist1[hduid], hdulisto)
             reg = None
         else:
-            hduoid, reg = init_reg(
-                hdulist1[hduid], hdulisto, optlist.region)
+            reg = iu.parse_region(optlist.region)
+            if not reg[0] or not reg[1]:
+                logging.error('parse_region(%s) failed', optlist.region)
+                exit(1)
+            hduoid = iu.init_reg(hdulist1[hduid], hdulisto, reg)
+        #
+        # optionally subtract bias
+        if optlist.bias:
+            iu.subtract_bias(optlist.bias, optlist.btype, hdulist1[hduid])
+            if hdulist2:
+                iu.subtract_bias(optlist.bias, optlist.btype, hdulist2[hduid])
         #
         # do the arithmetic
         if hdulist2:
@@ -149,72 +151,9 @@ def main():
     exit(0)
 
 
-def init_hdu(hdui, hdulisto):
-    """
-    Use hdui as a template to append a new hdu to hdulisto
-    copy the header and set the size in preparation for data
-    to be added later.  Only sets sizes for PrimaryHDU.
-    """
-    # create the output hdu from the master
-    if not isinstance(hdui, fits.PrimaryHDU):
-        hdri = hdui.header.copy()
-        hdulisto.append(fits.ImageHDU(None, hdri, hdri['EXTNAME']))
-    hduoid = len(hdulisto) - 1
-    hdro = hdulisto[hduoid].header
-    # logging.debug('output header before:\n%s\n', hdro.tostring())
-    hdro['NAXIS'] = 2
-    hdro.set('NAXIS1', hdri['NAXIS1'],
-             "size of the n'th axis", after='NAXIS')
-    hdro.set('NAXIS2', hdri['NAXIS2'],
-             "size of the n'th axis", after='NAXIS1')
-    hdro['BITPIX'] = -32
-    # logging.debug('output header after:\n%s\n', hdro.tostring())
-    return hduoid
-
-
-def init_reg(hdui, hdulisto, region):
-    """
-    Use hdui as a template to append a new hdu to hdulisto
-    copy the header and set the size in preparation defined by
-    the region for data to be added later. Only sets sizes for PrimaryHDU.
-    """
-    # create the output hdu region from the master
-    if not isinstance(hdui, fits.PrimaryHDU):
-        hdri = hdui.header.copy()
-        hdulisto.append(fits.ImageHDU(None, hdri, hdri['EXTNAME']))
-    hduoid = len(hdulisto) - 1
-    logging.debug('hduoid=%s', hduoid)
-    (yslice, xslice) = iu.parse_region(region)
-    if not yslice or not xslice:
-        logging.error('iu.parse_region(%s) failed', region)
-        exit(1)
-    reg = (yslice, xslice)
-    naxis2 = yslice.stop - yslice.start
-    naxis1 = xslice.stop - xslice.start
-    hdro = hdulisto[hduoid].header
-    hdro['NAXIS'] = 2
-    hdro.set('NAXIS1', naxis1,
-             "size of the n'th axis", after='NAXIS')
-    hdro.set('NAXIS2', naxis2,
-             "size of the n'th axis", after='NAXIS1')
-    hdro['EXTNAME'] = hdri['EXTNAME']
-    if hdri.count('CHANNEL'):
-        hdro['CHANNEL'] = hdri['CHANNEL']
-    # update any wcses
-    wcses = wcs.find_all_wcs(hdro, fix=False)
-    for w in wcses:
-        wreg = w.slice(reg)
-        wreghdro = wreg.to_header()
-        for card in wreghdro.cards:
-            key = card.keyword
-            value = card.value
-            comment = card.comment
-            hdro.set(key, value, comment)
-    return hduoid, reg
-
-
 def ffcalc(arr1, arr2, op, reg):
     """
+    returns (arr1 op arr2)
     """
     if reg:
         yslice = reg[0]
@@ -236,6 +175,7 @@ def ffcalc(arr1, arr2, op, reg):
 
 def fscalc(arr1, s, op, reg):
     """
+    returns (array op scalar)
     """
     if reg:
         yslice = reg[0]
@@ -292,37 +232,6 @@ def get_operand_type(operand):
             logging.error(emsg)
             return operandtypes['error']
     return operandtypes['list']
-
-
-def create_output_hdulist(hdulisti, argv):
-    """
-    """
-    logging.debug("in create_output_hdulist()")
-    # Create the output image, copy and update header comments, history
-    hdulisto = fits.HDUList()
-    hdulisto.append(fits.ImageHDU(None, hdulisti[0].header))
-    hdr = hdulisto[0].header
-    cstr = hdr.comments['DATE']  # copy comment
-    hdr.rename_keyword('DATE', 'DATEORIG')
-    hdr.comments['DATEORIG'] = "Previous file date/time"
-    # FITS date format: 'yyyy-mm-ddTHH:MM:SS[.sss]'
-    dtstr = datetime.datetime.utcnow().isoformat(timespec='milliseconds')
-    hdr.insert('DATEORIG', ('DATE', dtstr, cstr))
-    # add HISTORY lines
-    hdr.add_history("Header written by {} at: {}".
-                    format(os.path.basename(argv[0]), dtstr))
-    hdr.add_history("CMD: {} {}".format(
-        os.path.basename(argv[0]), ' '.join(argv[1:])))
-    return hdulisto
-
-
-def init_logging(debug):
-    if debug:
-        logging.basicConfig(format='%(levelname)s: %(message)s',
-                            level=logging.DEBUG)
-    else:
-        logging.basicConfig(format='%(levelname)s: %(message)s',
-                            level=logging.INFO)
 
 
 if __name__ == '__main__':
