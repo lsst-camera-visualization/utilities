@@ -54,9 +54,9 @@ def parse_args():
                         help="all lines in one plot")
     parser.add_argument("--bias", nargs='?', metavar='cols', const='overscan',
                         help="subtract bias, fmt: \"x1:x2\"")
-    parser.add_argument("--btype", choices=['mean', 'median', 'byrow'],
-                        help="bias subtract by-row (def) or constant",
-                        default='byrow')
+    parser.add_argument("--btype", default='byrow',
+                        choices=['mean', 'median', 'byrow', 'byrowcol'],
+                        help="bias subtraction method, default is byrow")
     # hdu name|index exclusive
     hgroup = parser.add_mutually_exclusive_group()
     hgroup.add_argument("--hduname", nargs='+',

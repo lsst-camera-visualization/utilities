@@ -138,6 +138,18 @@ def parse_region(reg):
         (x, y1, y2) = re.match(r"(\*),\s*([0-9]+):([0-9]+)$", reg).groups()
         retval = (slice(int(y1)-1, int(y2)), slice(None, None))
     #
+    # reg = [x1:*,y1:y2]) -- row selection w/cols to end
+    elif re.match(r"([0-9]+):\s*(\*),\s*([0-9]+):([0-9]+)$", reg):
+        (x1, x2, y1, y2) = re.match(
+            r"([0-9]+):\s*(\*),\s*([0-9]+):([0-9]+)$", reg).groups()
+        retval = (slice(int(y1)-1, int(y2)), slice(int(x1)-1, None))
+    #
+    # reg = [*:x1,y1:y2]) -- row selection w/cols from beginning
+    elif re.match(r"(\*):\s*([0-9]+),\s*([0-9]+):([0-9]+)$", reg):
+        (x1, x2, y1, y2) = re.match(
+            r"(\*):\s*([0-9]+),\s*([0-9]+):([0-9]+)$", reg).groups()
+        retval = (slice(int(y1)-1, int(y2)), slice(None, int(x2)-1))
+    #
     # reg = [x0,y0] -- single pixel
     elif re.match(r"([0-9]+),\s*([0-9]+)$", reg):
         (x0, y0) = re.match(r"([0-9]+),\s*([0-9]+)$", reg).groups()
