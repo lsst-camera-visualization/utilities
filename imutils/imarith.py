@@ -54,7 +54,7 @@ def parse_args():
                         help="subtract bias, fmt: \"x1:x2\"")
     parser.add_argument("--btype", default='byrow',
                         choices=['mean', 'median', 'byrow', 'byrowcol'],
-                        help="bias subtract by-row (def) or constant")
+                        help="bias subtraction method, default is byrow")
     parser.add_argument("--debug", action='store_true',
                         help="print additional debugging messages")
     return parser.parse_args()
@@ -100,8 +100,14 @@ def main():
         exit(1)
     for hduid in hduids:  # process these images
         #
+        if not hdulist2.index_of(hdulist1[hduid].name):
+            logging.error('HDU %s does not exist in %s',
+                          hdulist1[hduid].name, hdulist2.filename())
+        else:
+            hdu2id = hdulist2.index_of(hdulist1[hduid].name)
+        #
         if hdulist2 and np.shape(hdulist1[hduid].data) != \
-                np.shape(hdulist2[hduid].data):
+                np.shape(hdulist2[hdu2id].data):
             logging.error("Images are not comensurate")
             exit(1)
         #
@@ -120,12 +126,12 @@ def main():
         if optlist.bias:
             iu.subtract_bias(optlist.bias, optlist.btype, hdulist1[hduid])
             if hdulist2:
-                iu.subtract_bias(optlist.bias, optlist.btype, hdulist2[hduid])
+                iu.subtract_bias(optlist.bias, optlist.btype, hdulist2[hdu2id])
         #
         # do the arithmetic
         if hdulist2:
             hdulisto[hduoid].data = ffcalc(hdulist1[hduid].data,
-                                           hdulist2[hduid].data,
+                                           hdulist2[hdu2id].data,
                                            optlist.op, reg)
         else:  # scalar or list of scalars
             if len(operand2) == 1:
