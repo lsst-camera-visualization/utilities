@@ -262,9 +262,10 @@ def main():
     if optlist.info:  # just print the image info and exit
         exit()
     if optlist.title:
-        fig.tight_layout(pad=4)
+        fig.set_tight_layout({"pad": 4.0})
     else:
-        fig.tight_layout()
+        fig.set_tight_layout(True)
+
     plt.show()
 
 
