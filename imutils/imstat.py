@@ -30,7 +30,13 @@ def parse_args():
     sgroup = parser.add_argument_group("stats", "select statistics and regions"
                                        " (exclusive of quicklook)")
     sgroup.add_argument("--region", nargs='+', metavar='reg',
-                        help="region fmt: \"x1:x2,y1:y2\",")
+                        help="iraf fmt: \"x1:x2,y1:y2\"")
+    sgroup.add_argument("--datasec", action='store_true',
+                        help="perform stats on DATASEC region")
+    sgroup.add_argument("--overscan", action='store_true',
+                        help="perform stats on serial overscan region")
+    sgroup.add_argument("--poverscan", action='store_true',
+                        help="perform stats on parllel overscan region")
     sgroup.add_argument("--stats", nargs='+', metavar='stat',
                         help="select: mean median stddev min max")
     sgroup.add_argument("--bias", nargs='?', metavar='cols', const='overscan',
@@ -43,6 +49,8 @@ def parse_args():
                         metavar='idn', help="process HDU list by names")
     hgroup.add_argument("--hduindex", nargs='+', type=int,
                         metavar='idx', help="process HDU list by ids")
+    parser.add_argument("--rstats", action='store_true',
+                        help="use sigma_clipped_stats() for avg,med,std")
     parser.add_argument("--tearing", action='store_true',
                         help="add tearing metric to quicklook output")
     parser.add_argument("--dipoles", action='store_true',
@@ -99,19 +107,34 @@ def stats_proc(optlist, hduids, hdulist):
     """
     # Process each HDU in the list "hduids"
     for hduid in hduids:
-        pix = hdulist[hduid].data
-        name = hdulist[hduid].name
+        hdu = hdulist[hduid]
+        pix = hdu.data
+        name = hdu.name
+        slices = []
+        (datasec, soscan, poscan) = iu.get_data_oscan_slices(hdu)
+        if optlist.datasec:
+            slices.append(datasec)
+        if optlist.overscan:
+            slices.append(soscan)
+        if optlist.poverscan:
+            slices.append(poscan)
         if optlist.region:
             for reg in optlist.region:  # if there are regions
                 logging.debug('processing %s', reg)
                 slice_spec = iu.parse_region(reg)
                 if slice_spec:
-                    stats_print(optlist, hduid, name,
-                                pix[slice_spec], reg)
+                    slices.append(slice_spec)
                 else:
-                    logging.error('skipping')
-        else:
+                    logging.error('skipping region %s', reg)
+
+        if len(slices) == 0:
             stats_print(optlist, hduid, name, pix, None)
+        for slice_spec in slices:
+            y1, y2 = slice_spec[0].start + 1, slice_spec[0].stop
+            x1, x2 = slice_spec[1].start + 1, slice_spec[1].stop
+            reg = "{}:{},{}:{}".format(x1, x2, y1, y2)
+            stats_print(optlist, hduid, name,
+                        pix[slice_spec], reg)
 
 
 def stats_print(optlist, sid, name, buf, reg):
@@ -119,14 +142,20 @@ def stats_print(optlist, sid, name, buf, reg):
     """
     if not optlist.stats:
         optlist.stats = ["mean", "median", "stddev", "min", "max"]
+
+    if optlist.rstats:
+        mean_str, median_str, stddev_str = "rmean", "rmedian", "rstddev"
+    else:
+        mean_str, median_str, stddev_str = "mean", "median", "stddev"
+
     if not optlist.noheadings and ncalls.counter == 0:
         print("#{:>3s} {:>9s}".format("id", "HDUname"), end="")
         if "mean" in optlist.stats:
-            print(" {:>8s}".format("mean"), end="")
+            print(" {:>8s}".format(mean_str), end="")
         if "median" in optlist.stats:
-            print(" {:>8s}".format("median"), end="")
+            print(" {:>8s}".format(median_str), end="")
         if "stddev" in optlist.stats:
-            print(" {:>7s}".format("stddev"), end="")
+            print(" {:>7s}".format(stddev_str), end="")
         if "min" in optlist.stats:
             print(" {:>7s}".format("min"), end="")
         if "max" in optlist.stats:
@@ -138,16 +167,22 @@ def stats_print(optlist, sid, name, buf, reg):
     if not optlist.noheadings:
         print(" {:3d} {:>9s}".format(sid, name), end="")
 
+    if optlist.rstats:
+        avg, med, std = stats.sigma_clipped_stats(buf, sigma=2.7)
+    else:
+        avg, med, std = np.mean(buf), np.median(buf), np.std(buf)
+
     if "mean" in optlist.stats:
-        print(" {:>8g}".format(np.mean(buf)), end="")
+        print(" {:>8g}".format(avg), end="")
     if "median" in optlist.stats:
-        print(" {:>8g}".format(np.median(buf)), end="")
+        print(" {:>8g}".format(med), end="")
     if "stddev" in optlist.stats:
-        print(" {:>7.4g}".format(np.std(buf)), end="")
+        print(" {:>7.4g}".format(std), end="")
     if "min" in optlist.stats:
         print(" {:>7g}".format(np.min(buf)), end="")
     if "max" in optlist.stats:
         print(" {:>7g}".format(np.max(buf)), end="")
+
     if reg:
         reg = re.sub(r"^\[*([^\]]*)\]*$", r"\1", reg)
         print(" {:20s}".format(reg), end="")
@@ -156,11 +191,10 @@ def stats_print(optlist, sid, name, buf, reg):
 
 
 def quicklook(optlist, hduids, hdulist):
-    """print quicklook for hdu according to options
+    """print quicklook for hdu's according to options
     """
-    hdr = hdulist[0].header
     try:
-        expt = float(hdr['EXPTIME'])
+        expt = float(hdulist[0].header['EXPTIME'])
     except KeyError as ke:
         emsg = "KeyError: {}".format(ke)
         logging.warn(emsg)
@@ -168,74 +202,8 @@ def quicklook(optlist, hduids, hdulist):
         logging.warn(emsg)
         expt = 0.0
 
-    for hduid in hduids:
-        # get header details to extract signal, bias regions)
-        pix = hdulist[hduid].data
-        logging.debug('shape(pix)=%s', np.shape(pix))
-        name = hdulist[hduid].name
-        hdr = hdulist[hduid].header
-        try:
-            dstr = hdr['DATASEC']
-        except KeyError as ke:
-            logging.error('KeyError: %s, required for quicklook mode', ke)
-            exit(1)
-        logging.debug('DATASEC=%s', dstr)
-        res = re.match(r"\[?([0-9]*):([0-9]+),([0-9]+):([0-9]+)\]?",
-                       dstr)
-        if res:
-            datasec = res.groups()
-        else:
-            emsg = "DATASEC:{} parsing failed".format(dstr)
-            logging.error(emsg)
-            exit(1)
-        naxis1 = int(hdr['NAXIS1'])
-        naxis2 = int(hdr['NAXIS2'])
-        # define region to measure signal level)
-        x1 = int(datasec[0]) - 1
-        x2 = int(datasec[1])
-        y1 = int(datasec[2]) - 1
-        y2 = int(datasec[3])
-        sig_buf = pix[y1:y2, x1:x2]
-        logging.debug('sig_buf = pix[%s:%s, %s:%s]', y1, y2, x1, x2)
-        logging.debug('shape(sig_buf)=%s', np.shape(sig_buf))
-
-        # Serial bias_region = "[y1:y2,x1:x2]"
-        x1 = int(datasec[1])
-        x2 = naxis1
-        y1 = int(datasec[2]) - 1
-        y2 = int(datasec[3])
-        if y1 > y2 or x1 > x2:
-            emsg = "No bias region available for datasec={}"\
-                " with naxis1={}, naxis2={}".\
-                format(datasec, naxis1, naxis2)
-            logging.error(emsg)
-            exit(1)
-        bias_buf = pix[y1:y2, x1:x2]
-        logging.debug('bias_buf = pix[%s:%s, %s:%s]', y1, y2, x1, x2)
-        logging.debug('shape(bias_buf)=%s', np.shape(bias_buf))
-
-        # parallel bias_region = "[y1:y2,x1:x2]"
-        x1 = int(datasec[0]) - 1
-        x2 = int(datasec[1])
-        y1 = int(datasec[3])
-        y2 = naxis2
-        if y1 > y2 or x1 > x2:
-            logging.error('No bias region available for datasec=%s',
-                          datasec)
-            logging.error(' with naxis1=%s, naxis2=%s', naxis1, naxis2)
-            exit(1)
-        p_bias_buf = pix[y1:y2, x1:x2]
-        logging.debug('p_bias_buf = pix[%s:%s, %s:%s]', y1, y2, x1, x2)
-        logging.debug('shape(p_bias_buf)=%s', np.shape(p_bias_buf))
-        quicklook_print(optlist, hduid, name, pix, sig_buf,
-                        bias_buf, p_bias_buf, expt)
-
-
-def quicklook_print(optlist, sid, name, pix, sig_buf,
-                    bias_buf, p_bias_buf, expt):
-    """perform and print the given statistics quantities
-       fields are: mean, bias, signal, noise, adu/s
-    """
+    # perform and print the given statistics quantities
+    # fields are: mean, bias, signal, noise, adu/s
     quick_fields = ["mean", "bias", "signal",
                     "noise", "adu/sec", "eper:s-cte", "eper:p-cte"]
     if optlist.tearing:
@@ -245,177 +213,236 @@ def quicklook_print(optlist, sid, name, pix, sig_buf,
     if optlist.threshold:
         quick_fields.append("threshold")
 
-    if not optlist.noheadings and ncalls.counter == 0:
-        print("#{:>3s} {:>9s}".format("id", "HDUname"), end="")
+    for hduid in hduids:
+        #
+        hdu = hdulist[hduid]
+        # hdr = hdu.header
+        name = hdu.name
+
+        # get datasec, serial overscan, parallel overscan as slices
+        (datasec, soscan, poscan) = iu.get_data_oscan_slices(hdu)
+        if not datasec or not soscan or not poscan:
+            logging.error('Could not get DATASEC or overscan specs for %s',
+                          name)
+            exit(1)
+
+        if optlist.rstats:
+            median_str, bias_str, noise_str = "rmedian", "rbias", "rnoise"
+        else:
+            median_str, bias_str, noise_str = "median", "bias", "noise"
+
+        if not optlist.noheadings and ncalls.counter == 0:
+            print("#{:>3s} {:>9s}".format("id", "HDUname"), end="")
+            if "mean" in quick_fields:
+                print(" {:>7s}".format(median_str), end="")
+            if "bias" in quick_fields:
+                print(" {:>6s}".format(bias_str), end="")
+            if "signal" in quick_fields:
+                print(" {:>6s}".format("signal"), end="")
+            if "noise" in quick_fields:
+                print(" {:>8s}".format(noise_str), end="")
+            if "adu/sec" in quick_fields and expt > 0:
+                print("{:>9s}".format("adu/sec"), end="")
+            if "eper:s-cte" in quick_fields:
+                print("{:>9s}".format("s-cte"), end="")
+            if "eper:p-cte" in quick_fields:
+                print("{:>9s}".format("p-cte"), end="")
+            if "tearing" in quick_fields:
+                print("{:>15s}".format("tearing: L  R"), end="")
+            if "dipoles" in quick_fields:
+                print("{:>9s}".format("%dipoles"), end="")
+            if "threshold" in quick_fields:
+                print("{:>9s}".format("N>thresh"), end="")
+            print("")  # newline)
+
+        if not optlist.noheadings:
+            print(" {:3d} {:>9s}".format(hduid, name), end="")
+
+        if optlist.rstats:
+            avg, med, std = stats.sigma_clipped_stats(hdu.data[datasec])
+            sig_mean = med
+            avg, med, std = stats.sigma_clipped_stats(hdu.data[soscan])
+            bias_mean = med
+            y0 = int(0.6 * datasec[0].start) + int(0.4 * datasec[0].stop)
+            y1 = int(0.4 * datasec[0].start) + int(0.6 * datasec[0].stop)
+            sx0 = int(0.95 * soscan[1].start) + int(0.05 * soscan[1].stop)
+            avg, med, std = stats.sigma_clipped_stats(hdu.data[y0:y1, sx0:])
+            noise = std
+        else:
+            sig_mean = np.median(hdu.data[datasec])
+            bias_mean = np.median(hdu.data[soscan])
+            y0 = int(0.6 * datasec[0].start) + int(0.4 * datasec[0].stop)
+            y1 = int(0.4 * datasec[0].start) + int(0.6 * datasec[0].stop)
+            sx0 = int(0.95 * soscan[1].start) + int(0.05 * soscan[1].stop)
+            noise = np.std(hdu.data[y0:y1, sx0:])
+
         if "mean" in quick_fields:
-            print(" {:>6s}".format("median"), end="")
+            print(" {:>7g}".format(sig_mean), end="")
         if "bias" in quick_fields:
-            print(" {:>5s}".format("bias"), end="")
+            print(" {:>6g}".format(bias_mean), end="")
         if "signal" in quick_fields:
-            print(" {:>6s}".format("signal"), end="")
+            signal = sig_mean - bias_mean
+            print(" {:>6g}".format(signal), end="")
         if "noise" in quick_fields:
-            print(" {:>7s}".format("noise"), end="")
+            print(" {:>8.4g}".format(noise), end="")
         if "adu/sec" in quick_fields and expt > 0:
-            print("{:>9s}".format("adu/sec"), end="")
+            print(" {:>8.2f}".format(float(signal)/expt), end="")
         if "eper:s-cte" in quick_fields:
-            print("{:>9s}".format("s-cte"), end="")
+            logging.debug('s-cte------------------')
+            scte = eper_serial(datasec, soscan, hdu)
+            if scte:
+                print(" {:>8.6g}".format(scte), end="")
+            else:
+                print(" {:>8s}".format(""), end="")
+        # ---------
         if "eper:p-cte" in quick_fields:
-            print("{:>9s}".format("p-cte"), end="")
+            logging.debug('p-cte------------------')
+            pcte = eper_parallel(datasec, poscan, hdu)
+            if pcte:
+                print(" {:>8.6g}".format(pcte), end="")
+            else:
+                print(" {:>8s}".format(""), end="")
+        # ---------
         if "tearing" in quick_fields:
-            print("{:>15s}".format("tearing: L  R"), end="")
+            logging.debug('tearing check----------')
+            tl, tr = tearing_metric(hdu.data[datasec])
+            print("{:>4.1f}{:>4.1f}".format(tl, tr), end="")
+        # ---------
         if "dipoles" in quick_fields:
-            print("{:>9s}".format("%dipoles"), end="")
+            logging.debug('dipoles check----------')
+            ndipole = count_dipoles(hdu.data[datasec])
+            print("{:>9.2f}".format(
+                100.0*float(2*ndipole)/(np.size(hdu.data[datasec]))), end="")
+        # ---------
         if "threshold" in quick_fields:
-            print("{:>9s}".format("N>thresh"), end="")
+            logging.debug('threshold check----------')
+            print("{:>9d}".format(
+                np.count_nonzero(hdu.data[datasec] >= optlist.thresh), end=""))
+        # ---------
         print("")  # newline)
+        ncalls()  # track call count, acts like static variable)
 
-    if not optlist.noheadings:
-        print(" {:3d} {:>9s}".format(sid, name), end="")
 
-    if "mean" in quick_fields:
-        sig_mean = np.median(sig_buf)
-        print(" {:>6g}".format(sig_mean), end="")
-    if "bias" in quick_fields:
-        bias_mean = np.median(bias_buf)
-        print(" {:>5g}".format(bias_mean), end="")
-    if "signal" in quick_fields:
-        signal = sig_mean - bias_mean
-        print(" {:>6g}".format(signal), end="")
-    if "noise" in quick_fields:
-        (nrows, ncols) = np.shape(bias_buf)
-        print(" {:>7.4g}".format(
-            np.std(bias_buf[int(nrows/2-nrows/20):int(nrows/2+nrows/20),
-                            3:ncols-2])), end="")
-    if "adu/sec" in quick_fields and expt > 0:
-        print(" {:>8.2f}".format(float(signal)/expt), end="")
-    if "eper:s-cte" in quick_fields:
-        logging.debug('s-cte------------------')
-        (nrows, ncols) = np.shape(sig_buf)
-        nsig_cols = ncols
-        # define region to measure signal used in cte calc)
-        y1 = int(nrows/2-nrows/10)
-        y2 = int(nrows/2+nrows/10)
-        x0 = ncols-int(ncols/20)
-        x1 = ncols-1
-        logging.debug('s_n=sig_buf[%s:%s,%s:%s]', y1, y2, x0, x1)
-        s_n = sig_buf[y1:y2, x0:x1]
-        # define region to measure bias
-        (nrows, ncols) = np.shape(bias_buf)
-        l_ncols = 3
-        bias_mean = np.mean(bias_buf[y1:y2, l_ncols:ncols])
-        logging.debug('using bias_buf[%d:%d,%d:%d]',
-                      y1, y2, l_ncols, ncols)
-        l_n = np.mean(s_n) - bias_mean
-        logging.debug('l_n=%10.6g', l_n)
-        y1 = int(nrows/2-nrows/10)
-        y2 = int(nrows/2+nrows/10)
-        x0 = 0
-        x1 = l_ncols
-        logging.debug('b_n=bias_buf[%s:%s,%s:%s]', y1, y2, x0, x1)
-        b_n = bias_buf[y1:y2, x0:x1]
-        l_nn = np.mean((b_n - bias_mean).sum(axis=1))
-        logging.debug('l_nn=%10.6g', l_nn)
-        if l_n > 0.0:
-            eper = 1 - (l_nn / (nsig_cols * l_n))
-            print(" {:>8.6g}".format(eper), end="")
-    if "eper:p-cte" in quick_fields:
-        logging.debug('p-cte------------------')
-        (nrows, ncols) = np.shape(p_bias_buf)
-        l_nrows = 3  # number of overscan rows used to determing cte
-        # define region to measure bias used in cte calc)
-        x1 = int(ncols/2-ncols/10)
-        x2 = int(ncols/2+ncols/10)
-        y0 = l_nrows
-        y1 = nrows
-        p_bias_mean = np.mean(p_bias_buf[y0:y1, x1:x2])
-        logging.debug('p_bias_mean=mean(p_bias_buf[%s:%s, %s:%s])',
-                      y0, y1, x1, x2)
-        logging.debug('p_bias_mean=%10.6g', p_bias_mean)
-        # define region to measure signal used in cte calc)
-        (nrows, ncols) = np.shape(sig_buf)
-        x1 = int(ncols/2-ncols/10)
-        x2 = int(ncols/2+ncols/10)
-        y0 = nrows-100
-        y1 = nrows-1
-        logging.debug('s_n=sig_buf[%s:%s,%s:%s]', y0, y1, x1, x2)
-        s_n = sig_buf[y0:y1, x1:x2]
-        l_n = np.mean(s_n) - p_bias_mean
-        logging.debug('l_n=%10.6g', l_n)
-        x1 = int(ncols/2-ncols/10)
-        x2 = int(ncols/2+ncols/10)
-        y0 = 0
-        y1 = l_nrows
-        logging.debug('shape(p_bias_buf)=%s', np.shape(p_bias_buf))
-        logging.debug('b_n=p_bias_buf[%s:%s,%s:%s]', x1, x2, y0, y1)
-        b_n = p_bias_buf[y0:y1, x1:x2]
-        logging.debug('shape(b_n)=%s', np.shape(b_n))
-        # l_nn = np.median(b_n) - p_bias_mean
-        l_nn = np.mean((b_n - bias_mean).sum(axis=0))
-        logging.debug('l_nn=%10.6g', l_nn)
-        (nrows, ncols) = np.shape(sig_buf)
-        if l_n > 0.0:
-            eper = 1 - (l_nn / (nrows * l_n))
-            print(" {:>8.6g}".format(eper), end="")
-    # ---------
-    if "tearing" in quick_fields:
-        logging.debug('tearing check----------')
-    # column-1 into an array arr1)
-    # column-2..N into 2nd array with dimension N-1 x Ncols arr2)
-    # take median of 2nd array to make 1-D: arr3)
-    # find stddev of arr3)
-    # form (arr3 - arr1)/stddev as arr4)
-    # find the first value of index "j" in sorted(arr4) less than 1.0)
-    # report out (len(arr4)-j)/len(arr4) to 1 digit as tearing where)
-        # this represents the fraction of the array less than 1.0)
-        # left side)
-        arr3 = np.median(sig_buf[:, 2:40], axis=1)
-        arr4 = (arr3 - sig_buf[:, 0])/np.std(arr3)
-        tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
-        print("{:>4.1f}".format(tm), end="")
-        # right side)
-        arr3 = np.median(sig_buf[:, -40:-2], axis=1)
-        arr4 = (arr3 - sig_buf[:, -0])/np.std(arr3)
-        tm = (1.0*np.size(arr4) - np.searchsorted(arr4, 1.0))/np.size(arr4)
-        print("{:>4.1f}".format(tm), end="")
-    # ---------
-    if "dipoles" in quick_fields:
-        logging.debug('dipoles check----------')
-        # region to work on is sig_buf, say 200 rows near top)
-        # transpose to column order)
-        # find sigma-clipped mean, median and stdev)
-        # subtract mean from array)
-        # divide the array by sigma)
-        # go through array finding pixel pairs of differing sign)
-        # and where |A(n)-A(n+1)| > 6)
-        # add one to counter each time such a pair is found)
-        # print out the % of pixels occupied by dipoles)
-        (nrows, ncols) = np.shape(sig_buf)
-        arr1 = sig_buf[-int(nrows/10):-1, :]  # use top 10% of array)
-        logging.debug('using subarray [%s:%s,:]', -int(nrows/10), -1)
-        arr2 = arr1.flatten('F')  # flatten to 1d in column order)
-        avg2, med2, std2 = stats.sigma_clipped_stats(arr2)
-        logging.debug('clipped stats: avg:%.3g med:%s stdev:%.3g',
-                      avg2, med2, std2)
-        arr3 = (arr2 - avg2)/std2
-        ndipole = 0
-        for i in range(0, np.size(arr3) - 1):
-            if (np.sign(arr3[i+1] * arr3[i]) == -1)\
-                    and abs(arr3[i+1] - arr3[i]) > 5:
-                ndipole += 1
-        logging.debug('dipole count = %s', ndipole)
-        print("{:>9.2f}".format(
-            100.0*float(2*ndipole)/(np.size(arr1))), end="")
-    # ---------
-    if "threshold" in quick_fields:
-        logging.debug('threshold check----------')
-        # region to work on is sig_buf
-        arr = pix.flatten('F')
-        thresh = optlist.threshold
-        print("{:>9d}".format(
-            np.count_nonzero(np.asarray(arr >= thresh)), end=""))
-    # ---------
-    print("")  # newline)
-    ncalls()  # track call count, acts like static variable)
+def eper_serial(datasec, soscan, hdu):
+    """
+    Given datasec and serial overscan as slices, calculate
+    eper using the first ecols=3 columns of serial overscan
+    """
+    ecols = 3  # number of columns used for eper signal
+    ncols = datasec[1].stop - datasec[1].start
+
+    # define signal region: mid 20% in y, last 5% in x)
+    y0 = int(0.6 * datasec[0].start) + int(0.4 * datasec[0].stop)
+    y1 = int(0.4 * datasec[0].start) + int(0.6 * datasec[0].stop)
+    sx0 = int(0.05 * datasec[1].start) + int(0.95 * datasec[1].stop)
+    sx1 = datasec[1].stop - 1
+    logging.debug('s_r=%s[%s:%s,%s:%s]', hdu.name, y0, y1, sx0, sx1)
+    s_r = (slice(y0, y1), slice(sx0, sx1))
+
+    # define bias region: same rows as signal, exclude 1st cols in x
+    logging.debug('b_r=%s[%s:%s,%s:%s]', hdu.name, y0, y1,
+                  soscan[1].start + ecols, soscan[1].stop)
+    b_r = (slice(y0, y1), slice(soscan[1].start + ecols, soscan[1].stop))
+    # define eper region: same rows as signal, 1st ecols cols in x
+    logging.debug('e_r=%s[%s:%s,%s:%s]', hdu.name, y0, y1,
+                  soscan[1].start, soscan[1].start + ecols)
+    e_r = (slice(y0, y1), slice(soscan[1].start, soscan[1].start + ecols))
+
+    bias_mean = np.mean(hdu.data[b_r])
+    # signal
+    l_n = np.mean(hdu.data[s_r]) - bias_mean
+    logging.debug('l_n=%10.6g', l_n)
+    # deferred charge is avg of sum of ecols above bias
+    l_nn = np.mean((hdu.data[e_r] - bias_mean).sum(axis=1))
+    logging.debug('l_nn=%10.6g', l_nn)
+    if l_n > 0.0:
+        eper = 1 - (l_nn / (ncols * l_n))
+        return eper
+    else:
+        return None
+
+
+def eper_parallel(datasec, poscan, hdu):
+    """
+    Given datasec and parallel overscan as slices, calculate
+    eper using the first ecols=3 columns of parallel overscan
+    """
+    erows = 3  # number of columns used for eper signal
+    nrows = datasec[0].stop - datasec[0].start
+
+    # define signal region: last 5% in y
+    y0 = int(0.10 * datasec[0].start) + int(0.90 * datasec[0].stop)
+    y1 = datasec[0].stop - 1
+    sx0 = datasec[1].start
+    sx1 = datasec[1].stop
+    logging.debug('s_r=%s[%s:%s,%s:%s]', hdu.name, y0, y1, sx0, sx1)
+    s_r = (slice(y0, y1), slice(sx0, sx1))
+
+    # define bias region: same cols as signal, exclude 1st rows in y
+    logging.debug('b_r=%s[%s:%s,%s:%s]', hdu.name,
+                  poscan[0].start + erows, poscan[0].stop, sx0, sx1)
+    b_r = (slice(poscan[0].start + erows, poscan[0].stop), slice(sx0, sx1))
+    # define eper region: same rows as signal, 1st ecols cols in x
+    logging.debug('e_r=%s[%s:%s,%s:%s]', hdu.name,
+                  poscan[0].start, poscan[0].start + erows, sx0, sx1)
+    e_r = (slice(poscan[0].start, poscan[0].start + erows), slice(sx0, sx1))
+
+    bias_mean_row = np.median(hdu.data[b_r], axis=0)
+    # signal
+    l_n = np.mean(np.median(hdu.data[s_r], axis=0) - bias_mean_row)
+    logging.debug('l_n=%10.6g', l_n)
+    # deferred charge is avg of sum of ecols above bias
+    l_nn = np.mean((hdu.data[e_r] - bias_mean_row).sum(axis=0))
+    logging.debug('l_nn=%10.6g', l_nn)
+    if l_n > 0.0:
+        eper = 1 - (l_nn / (nrows * l_n))
+        return eper
+    else:
+        return None
+
+
+def tearing_metric(buf):
+    """
+    buf is one segment (w/out pre/over-scan) of an lsst ccd
+    return the fraction of pixels in the first and last column, (tl, tr),
+    that are less than one stddev below the median of the nearest
+    40 pixels in the same row as the pixel being evaluated
+    If (tl, tr) are near 1.0 then tearing is unlikely.
+    If they are below 0.5 it is very likely
+    """
+    # left side
+    arr = np.median(buf[:, 2:40], axis=1)
+    arr = (arr - buf[:, 0])/np.std(arr)
+    tl = (1.0*np.size(arr) - np.searchsorted(arr, 1.0))/np.size(arr)
+    # right side
+    arr = np.median(buf[:, -40:-2], axis=1)
+    arr = (arr - buf[:, -0])/np.std(arr)
+    tr = (1.0*np.size(arr) - np.searchsorted(arr, 1.0))/np.size(arr)
+    return (tl, tr)
+
+
+def count_dipoles(buf):
+    """
+    buf is one segment (w/out pre/over-scan) of an lsst ccd
+    count dipoles via:
+    -- use upper 10% of array rows
+    -- flatten in column major order
+    -- scale array in units of stdev from mean
+    -- find adjacent pairs where |A(n)-A(n+1)| > 5
+    -- count them
+    """
+    (nrows, ncols) = np.shape(buf)
+    logging.debug('count_dipoles():using subarray [%s:%s,:]',
+                  -int(nrows/10), -1)
+    arr = buf[-int(nrows/10):-1, :].flatten('F')
+    avg, med, std = stats.sigma_clipped_stats(arr)
+    logging.debug('clipped stats: avg:%.3g med:%s stdev:%.3g', avg, med, std)
+    arr = (arr - avg)/std
+    ndipole = 0
+    for i in range(0, np.size(arr) - 1):
+        if (np.sign(arr[i+1] * arr[i]) == -1) and abs(arr[i+1] - arr[i]) > 5:
+            ndipole += 1
+    return ndipole
 
 
 def ncalls():

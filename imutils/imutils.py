@@ -14,7 +14,7 @@ import numpy as np
 
 
 def init_logging(debug):
-    """
+    """ Set up debug and info level logging
     """
     if debug:
         logging.basicConfig(format='%(levelname)s: %(message)s',
@@ -25,13 +25,15 @@ def init_logging(debug):
 
 
 def init_warnings():
-    """
+    """ Block warnings from Astropy
     """
     warnings.simplefilter('ignore', category=AstropyWarning)
 
 
 def create_output_hdulist(hdulisti, argv):
     """
+    Using the input hdulist create the output hdulist with updates to
+    DATE and an HISTORY lines to record what was done
     """
     logging.debug("creating output hdulist")
     # Create the output image, copy and update header comments, history
@@ -226,10 +228,12 @@ def get_requested_image_hduids(optlist, hdulist):
     return None
 
 
-def get_overscan_spec(hdu):
+def get_data_oscan_slices(hdu):
     """
-    Given an hdu, return serial and parallel overscan regions as slices
-    Returns a pair of regions (sbias, pbias) where each are in slice notation
+    Given an hdu, return datasec, serial and parallel overscan regions as
+    slices.  Returns a tuple of regions (datasec, soscan, poscan).
+    This will only work for data that are in time order so that the serial
+    overscan is at the "end" of the rows.
     """
     # first get serial and parallel overscan region defs
     hdr = hdu.header
@@ -237,89 +241,105 @@ def get_overscan_spec(hdu):
         dstr = hdr['DATASEC']
     except KeyError as ke:
         logging.error('KeyError: %s required', ke)
-        return (None, None)
+        return (None, None, None)
     logging.debug('DATASEC=%s', dstr)
     try:
-        naxis1 = hdr['NAXIS1']
+        n1 = hdr['NAXIS1']
     except KeyError as ke:
         logging.error('KeyError: %s required', ke)
-        return (None, None)
+        return (None, None, None)
     try:
-        naxis2 = hdr['NAXIS2']
+        n2 = hdr['NAXIS2']
     except KeyError as ke:
         logging.error('KeyError: %s required', ke)
-        return (None, None)
+        return (None, None, None)
     # get DATASEC region
-    data_spec = parse_region(dstr)  # this can return (None, None)
-    (p1, p2) = (data_spec[0].start or 0,
-                data_spec[0].stop or len(hdu.data[:, 0]))
-    (s1, s2) = (data_spec[1].start or 0,
-                data_spec[1].stop or len(hdu.data[0, :]))
-    if naxis1 - s2 > s1:  # area to right of DATASEC
-        (b1, b2) = (s2, naxis1)
-    else:  # area to left of DATASEC
-        (b1, b2) = (0, s1)
-    soscan = (slice(0, naxis2), slice(b1, b2))
-    poscan = (slice(p2, naxis2), slice(0, naxis1))
+    datasec = parse_region(dstr)
+    if datasec == (None, None):
+        return (None, None, None)
+    (p1, p2) = (datasec[0].start or 0,
+                datasec[0].stop or len(hdu.data[:, 0]))
+    (s1, s2) = (datasec[1].start or 0,
+                datasec[1].stop or len(hdu.data[0, :]))
+    if n1 > s2:
+        soscan = (slice(0, n2), slice(s2, n1))
+    else:  # no serial overscan
+        soscan = (slice(None), slice(None))
+    if n2 > p2:
+        poscan = (slice(p2, n2), slice(0, n1))
+    else:
+        poscan = (slice(None), slice(None))
 
-    return (soscan, poscan)
+    return (datasec, soscan, poscan)
 
 
 def subtract_bias(bstring, btype, hdu):
     """
     Subtract a bias (constant or row base or special) from an hdu.
-    Choices are mean, median or byrow subtraction of a bias calculated
-    in either a given set of columns or using DATASEC to infer the
-    overscan region.  Using DATASEC skips the 1st 4 columns of overscan.
-    The rows-and-columns version uses both the serial and parallel oscan
-    to account for the shape of the bias (particularly for ITL sensors)
+    Choices are mean, median, byrow or byrowcol subtraction of a bias
+    calculated in either a given set of columns or using DATASEC to infer
+    the overscan region. The rows-and-columns method uses both the serial
+    and parallel oscan to account for the shape of the bias
+    (particularly for ITL sensors)
     """
-    (soscan, poscan) = get_overscan_spec(hdu)
-    #  [sp]oscan is ((y1, y2), (x1, x2)) format
+    (datasec, soscan, poscan) = get_data_oscan_slices(hdu)
 
     if bstring == 'overscan':
-        logging.debug('use overscan subregion in hdu:%s', hdu.name)
+        logging.debug('use overscan region in hdu:%s', hdu.name)
     elif len(bstring) >= 3:  # user supplies column selection
-        # eg. a:b is minimum spec size
-        # peel off outer brackets
-        reg = re.sub(r"^\[*([0-9]+:[0-9]+)\]*$", r"\1", bstring)
-        (x1, x2) = re.match(r"([0-9]+):([0-9]+)$", reg).groups()
-        soscan[1] = (x1, x2)
+        # eg. a:b is minimum spec size, peel off outer brackets
+        try:
+            logging.debug('use %s cols in hdu:%s bias subtraction', hdu.name)
+            reg = re.sub(r"^\[*([0-9]+:[0-9]+)\]*$", r"\1", bstring)
+            (x1, x2) = re.match(r"([0-9]+):([0-9]+)$", reg).groups()
+            soscan = (soscan[0], slice(int(x1), int(x2)))
+        except SyntaxError as se:
+            logging.error('SyntaxError: %s', se)
+            logging.error('bad bias selection %s', bstring)
+            exit(1)
     else:
         logging.error('bad bias selection %s', bstring)
         exit(1)
 
     logging.debug('biastype=%s', btype)
     # default method is "byrow"
-    if not btype or btype == 'byrow':
+    if btype in ('byrow', 'byrowcol'):
         # get sigma clipped median per row
         so_avg, so_bias, so_std = stats.sigma_clipped_stats(
             hdu.data[soscan], axis=1)
         so_bias = so_bias.reshape(np.shape(so_bias)[0], 1)
         logging.debug("np.shape(so_bias)={}".format(np.shape(so_bias)))
         hdu.data = hdu.data - so_bias.data
+        if btype == 'byrowcol':
+            # get sigma clipped median per column
+            logging.debug('poscan=((%d, %d), (%d, %d))',
+                          poscan[0].start, poscan[0].stop,
+                          poscan[1].start, poscan[1].stop)
+            po_avg, po_bias, po_std = stats.sigma_clipped_stats(
+                hdu.data[poscan], axis=0)
+            po_bias = po_bias.reshape(1, np.shape(po_bias)[0])
+            logging.debug("np.shape(po_bias)={}".format(np.shape(po_bias)))
+            hdu.data = hdu.data - po_bias.data
     elif btype == 'mean':
         bias = np.mean(hdu.data[soscan])
         hdu.data = hdu.data - bias
     elif btype == 'median':
         bias = np.median(hdu.data[soscan])
         hdu.data = hdu.data - bias
-    elif btype == 'byrowcol':
-        # get sigma clipped median per row
-        so_avg, so_bias, so_std = stats.sigma_clipped_stats(
-            hdu.data[soscan], axis=1)
-        so_bias = so_bias.reshape(np.shape(so_bias)[0], 1)
-        logging.debug("np.shape(so_bias)={}".format(np.shape(so_bias)))
-        hdu.data = hdu.data - so_bias.data
-        # get sigma clipped median per column
-        logging.debug('poscan=((%d, %d), (%d, %d))',
-                      poscan[0].start, poscan[0].stop,
-                      poscan[1].start, poscan[1].stop)
-        po_avg, po_bias, po_std = stats.sigma_clipped_stats(
-            hdu.data[poscan], axis=0)
-        po_bias = po_bias.reshape(1, np.shape(po_bias)[0])
-        logging.debug("np.shape(po_bias)={}".format(np.shape(po_bias)))
-        hdu.data = hdu.data - po_bias.data
     else:
         logging.error('btype: %s not valid', btype)
         exit(1)
+
+
+def long_substr(data):
+    """
+    https://stackoverflow.com/questions/2892931/\
+        longest-common-substring-from-more-than-two-strings-python#
+    """
+    substr = ''
+    if len(data) > 1 and len(data[0]) > 0:
+        for i in range(len(data[0])):
+            for j in range(len(data[0])-i+1):
+                if j > len(substr) and all(data[0][i:i+j] in x for x in data):
+                    substr = data[0][i:i+j]
+    return substr
