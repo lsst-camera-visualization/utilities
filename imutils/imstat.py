@@ -41,14 +41,16 @@ def parse_args():
                         help="select: mean median stddev min max")
     sgroup.add_argument("--bias", nargs='?', metavar='cols', const='overscan',
                         help="subtract bias, fmt: \"x1:x2\"")
-    sgroup.add_argument("--btype", choices=['mean', 'median', 'byrow'],
-                        help="bias subtract by-row (def) or constant",
-                        default='byrow')
+    sgroup.add_argument("--btype", default='byrow',
+                        choices=['mean', 'median', 'byrow','byrowcol'],
+                        help="bias subtract by-row (def) or constant")
+    #---------------------------------------------------------------
     hgroup = parser.add_mutually_exclusive_group()
     hgroup.add_argument("--hduname", nargs='+',
                         metavar='idn', help="process HDU list by names")
     hgroup.add_argument("--hduindex", nargs='+', type=int,
                         metavar='idx', help="process HDU list by ids")
+    #---------------------------------------------------------------
     parser.add_argument("--rstats", action='store_true',
                         help="use sigma_clipped_stats() for avg,med,std")
     parser.add_argument("--tearing", action='store_true',
@@ -70,12 +72,8 @@ def parse_args():
 def main():
     """main logic:"""
     optlist = parse_args()
-    if optlist.debug:
-        logging.basicConfig(format='%(levelname)s: %(message)s',
-                            level=logging.DEBUG)
-    else:
-        logging.basicConfig(format='%(levelname)s: %(message)s',
-                            level=logging.INFO)
+    iu.init_logging(optlist.debug)
+    iu.init_warnings()
     ncalls.counter = 0
     # begin processing -- loop over files
     for ffile in optlist.fitsfile:
@@ -85,7 +83,7 @@ def main():
             emsg = "IOError: {}".format(ioerr)
             logging.error(emsg)
             exit(1)
-        if optlist.info:  # just print the image info and exit
+        if optlist.info:  # just print the image info per file
             hdulist.info()
             continue
         if not optlist.noheadings:  # print filename
@@ -96,8 +94,6 @@ def main():
         if optlist.quicklook:
             quicklook(optlist, hduids, hdulist)
         else:
-            if optlist.bias:
-                iu.subtract_bias(optlist, hduids, hdulist)
             stats_proc(optlist, hduids, hdulist)
         ncalls.counter = 0  # reset per file, triggers headers
 
@@ -110,6 +106,8 @@ def stats_proc(optlist, hduids, hdulist):
         hdu = hdulist[hduid]
         pix = hdu.data
         name = hdu.name
+        if optlist.bias:
+            iu.subtrace_bias(optlist.bstring, optlist.btype, hdu)
         slices = []
         (datasec, soscan, poscan) = iu.get_data_oscan_slices(hdu)
         if optlist.datasec:
@@ -219,6 +217,9 @@ def quicklook(optlist, hduids, hdulist):
         # hdr = hdu.header
         name = hdu.name
 
+        if optlist.bias:
+            iu.subtrace_bias(optlist.bstring, optlist.btype, hdu)
+
         # get datasec, serial overscan, parallel overscan as slices
         (datasec, soscan, poscan) = iu.get_data_oscan_slices(hdu)
         if not datasec or not soscan or not poscan:
@@ -248,7 +249,7 @@ def quicklook(optlist, hduids, hdulist):
             if "eper:p-cte" in quick_fields:
                 print("{:>9s}".format("p-cte"), end="")
             if "tearing" in quick_fields:
-                print("{:>15s}".format("tearing: L  R"), end="")
+                print("{:>8s}".format("tml tmr"), end="")
             if "dipoles" in quick_fields:
                 print("{:>9s}".format("%dipoles"), end="")
             if "threshold" in quick_fields:
@@ -291,22 +292,22 @@ def quicklook(optlist, hduids, hdulist):
             logging.debug('s-cte------------------')
             scte = eper_serial(datasec, soscan, hdu)
             if scte:
-                print(" {:>8.6g}".format(scte), end="")
+                print(" {:>8.6f}".format(scte), end="")
             else:
-                print(" {:>8s}".format(""), end="")
+                print(" {:>8s}".format("None"), end="")
         # ---------
         if "eper:p-cte" in quick_fields:
             logging.debug('p-cte------------------')
             pcte = eper_parallel(datasec, poscan, hdu)
             if pcte:
-                print(" {:>8.6g}".format(pcte), end="")
+                print(" {:>8.6f}".format(pcte), end="")
             else:
-                print(" {:>8s}".format(""), end="")
+                print(" {:>8s}".format("None"), end="")
         # ---------
         if "tearing" in quick_fields:
             logging.debug('tearing check----------')
-            tl, tr = tearing_metric(hdu.data[datasec])
-            print("{:>4.1f}{:>4.1f}".format(tl, tr), end="")
+            tml, tmr = tearing_metric(hdu.data[datasec])
+            print(" {:>3.1f} {:>3.1f}".format(tml, tmr), end="")
         # ---------
         if "dipoles" in quick_fields:
             logging.debug('dipoles check----------')
@@ -316,8 +317,8 @@ def quicklook(optlist, hduids, hdulist):
         # ---------
         if "threshold" in quick_fields:
             logging.debug('threshold check----------')
-            print("{:>9d}".format(
-                np.count_nonzero(hdu.data[datasec] >= optlist.thresh), end=""))
+            print("{:>9d}".format(np.count_nonzero(
+                hdu.data[datasec] > optlist.threshold), end=""))
         # ---------
         print("")  # newline)
         ncalls()  # track call count, acts like static variable)
@@ -404,21 +405,21 @@ def eper_parallel(datasec, poscan, hdu):
 def tearing_metric(buf):
     """
     buf is one segment (w/out pre/over-scan) of an lsst ccd
-    return the fraction of pixels in the first and last column, (tl, tr),
+    return the fraction of pixels in the first and last column, (tml, tmr),
     that are less than one stddev below the median of the nearest
     40 pixels in the same row as the pixel being evaluated
-    If (tl, tr) are near 1.0 then tearing is unlikely.
+    If (tml, tmr) are near 1.0 then tearing is unlikely.
     If they are below 0.5 it is very likely
     """
     # left side
     arr = np.median(buf[:, 2:40], axis=1)
     arr = (arr - buf[:, 0])/np.std(arr)
-    tl = (1.0*np.size(arr) - np.searchsorted(arr, 1.0))/np.size(arr)
+    tml = (1.0*np.size(arr) - np.searchsorted(arr, 1.0))/np.size(arr)
     # right side
     arr = np.median(buf[:, -40:-2], axis=1)
     arr = (arr - buf[:, -0])/np.std(arr)
-    tr = (1.0*np.size(arr) - np.searchsorted(arr, 1.0))/np.size(arr)
-    return (tl, tr)
+    tmr = (1.0*np.size(arr) - np.searchsorted(arr, 1.0))/np.size(arr)
+    return (tml, tmr)
 
 
 def count_dipoles(buf):

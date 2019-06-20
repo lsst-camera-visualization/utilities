@@ -100,11 +100,10 @@ def main():
         exit(1)
     for hduid in hduids:  # process these images
         #
-        if not hdulist2.index_of(hdulist1[hduid].name):
+        hdu2id = hdulist2.index_of(hdulist1[hduid].name)
+        if not hdu2id:
             logging.error('HDU %s does not exist in %s',
                           hdulist1[hduid].name, hdulist2.filename())
-        else:
-            hdu2id = hdulist2.index_of(hdulist1[hduid].name)
         #
         if hdulist2 and np.shape(hdulist1[hduid].data) != \
                 np.shape(hdulist2[hdu2id].data):
