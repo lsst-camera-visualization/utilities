@@ -4,14 +4,12 @@ Perform image arithmetic
 """
 
 import sys
-import re
 import argparse
 import logging
 import textwrap
 import datetime
 import os.path
 from astropy.io import fits
-from astropy import wcs
 import numpy as np
 import imutils as iu
 
@@ -49,7 +47,8 @@ def parse_args():
                         metavar='idn', help="process HDU list by names")
     hgroup.add_argument("--hduindex", nargs='+', type=int,
                         metavar='idx', help="process HDU list by ids")
-    parser.add_argument("--region", help="region fmt: \"x1:x2, y1:y2\"")
+    parser.add_argument("--region", default=None,
+                        help="region fmt: \"x1:x2, y1:y2\"")
     parser.add_argument("--bias", nargs='?', metavar='cols', const='overscan',
                         help="subtract bias, fmt: \"x1:x2\"")
     parser.add_argument("--btype", default='byrow',
@@ -67,23 +66,14 @@ def main():
     iu.init_warnings()
 
     # evaluate operands as either a filename, float, floats or error
-    op1_type = get_operand_type(optlist.operand1)
-    op2_type = get_operand_type(optlist.operand2)
-    if op1_type == operandtypes['error'] or op2_type == operandtypes['error']:
-        logging.error("operands must be file or float(s) (string)")
-        exit(1)
-    if not optlist.result:
-        logging.error("Output file name required")
-        exit(1)
-
-    # arrange operands so file is first
-    if (op1_type == operandtypes['number'] and
-            op2_type == operandtypes['file']):
-        optlist.operand1, optlist.operand2 = optlist.operand2, optlist.operand1
+    verify_args(optlist)
+    region = None
+    if optlist.region:
+        region = iu.parse_region(optlist.region)
 
     # Open files, throws exception on error
     hdulist1 = fits.open(optlist.operand1, mode='readonly')
-    if op2_type == operandtypes['file']:
+    if os.path.isfile(optlist.operand2):
         hdulist2 = fits.open(optlist.operand2, mode='readonly')
     else:
         hdulist2 = None
@@ -94,33 +84,29 @@ def main():
 
     # loop over HDU id's from Master file, copy non-image HDUs
     # and process the image HDUs accordingly
-    hduids = iu.get_requested_image_hduids(optlist, hdulist1)
+    hduids = iu.get_requested_image_hduids(hdulist1, optlist.hduname,
+                                           optlist.hduindex)
     if hduids is None:
         logging.info('No data HDUs found or requested')
         exit(1)
     for hduid in hduids:  # process these images
         #
-        hdu2id = hdulist2.index_of(hdulist1[hduid].name)
-        if not hdu2id:
-            logging.error('HDU %s does not exist in %s',
-                          hdulist1[hduid].name, hdulist2.filename())
+        # This needs work to allow more flexible hdulist2 type images
+        # as-is, it enforces that names match for corresponding hdu's
+        if hdulist2:
+            hdu2id = hdulist2.index_of(hdulist1[hduid].name)
+            if not hdu2id:
+                logging.error('HDU %s does not exist in %s',
+                              hdulist1[hduid].name, hdulist2.filename())
         #
         if hdulist2 and np.shape(hdulist1[hduid].data) != \
                 np.shape(hdulist2[hdu2id].data):
             logging.error("Images are not comensurate")
             exit(1)
-        #
+
         # prepare the output hdu
-        if not optlist.region:
-            hduoid = iu.init_hdu(hdulist1[hduid], hdulisto)
-            reg = None
-        else:
-            reg = iu.parse_region(optlist.region)
-            if not reg[0] or not reg[1]:
-                logging.error('parse_region(%s) failed', optlist.region)
-                exit(1)
-            hduoid = iu.init_reg(hdulist1[hduid], hdulisto, reg)
-        #
+        hduoid = iu.init_hdu(hdulist1[hduid], hdulisto, region)
+
         # optionally subtract bias
         if optlist.bias:
             iu.subtract_bias(optlist.bias, optlist.btype, hdulist1[hduid])
@@ -131,14 +117,14 @@ def main():
         if hdulist2:
             hdulisto[hduoid].data = ffcalc(hdulist1[hduid].data,
                                            hdulist2[hdu2id].data,
-                                           optlist.op, reg)
+                                           optlist.op, region)
         else:  # scalar or list of scalars
             if len(operand2) == 1:
                 arg2 = float(operand2[0])
             else:
                 arg2 = float(operand2.pop(0))
             hdulisto[hduoid].data = fscalc(hdulist1[hduid].data,
-                                           arg2, optlist.op, reg)
+                                           arg2, optlist.op, region)
         # finish up this hdu
         hdulisto[hduoid].update_header()
         dtstr = datetime.datetime.utcnow().isoformat(
@@ -154,6 +140,26 @@ def main():
     # write the output file
     hdulisto.writeto(optlist.result, overwrite=True)
     exit(0)
+
+
+def verify_args(optlist):
+    """
+    Verify or exit, set operands in correct order
+    """
+    # evaluate operands as either a filename, float, floats or error
+    op1_type = get_operand_type(optlist.operand1)
+    op2_type = get_operand_type(optlist.operand2)
+    if op1_type == operandtypes['error'] or op2_type == operandtypes['error']:
+        logging.error("operands are: file, file or file,float(s)")
+        exit(1)
+    if not optlist.result:
+        logging.error("Output file name required")
+        exit(1)
+
+    # arrange operands so file is first
+    if (op1_type == operandtypes['number'] and
+            op2_type == operandtypes['file']):
+        optlist.operand1, optlist.operand2 = optlist.operand2, optlist.operand1
 
 
 def ffcalc(arr1, arr2, op, reg):

@@ -52,12 +52,8 @@ def parse_args():
 def main():
     """main logic:"""
     optlist = parse_args()
-    if optlist.debug:
-        logging.basicConfig(format='%(levelname)s: %(message)s',
-                            level=logging.DEBUG)
-    else:
-        logging.basicConfig(format='%(levelname)s: %(message)s',
-                            level=logging.INFO)
+    iu.init_logging()
+
     if optlist.scaling == 'density':
         window = 'boxcar'
     else:
@@ -78,8 +74,8 @@ def main():
             hdulist.info()
             continue
         # Construct a list of the HDU's to work on
-        hduids = iu.get_requested_image_hduids(optlist, hdulist)
-
+        hduids = iu.get_requested_image_hduids(hdulist, optlist.hduname,
+                                               optlist.hduindex)
         # loop over hdu's
         hducnt = 0
         for hduid in hduids:

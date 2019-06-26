@@ -42,15 +42,15 @@ def parse_args():
     sgroup.add_argument("--bias", nargs='?', metavar='cols', const='overscan',
                         help="subtract bias, fmt: \"x1:x2\"")
     sgroup.add_argument("--btype", default='byrow',
-                        choices=['mean', 'median', 'byrow','byrowcol'],
+                        choices=['mean', 'median', 'byrow', 'byrowcol'],
                         help="bias subtract by-row (def) or constant")
-    #---------------------------------------------------------------
+    # ---------------------------------------------------------------
     hgroup = parser.add_mutually_exclusive_group()
     hgroup.add_argument("--hduname", nargs='+',
                         metavar='idn', help="process HDU list by names")
     hgroup.add_argument("--hduindex", nargs='+', type=int,
                         metavar='idx', help="process HDU list by ids")
-    #---------------------------------------------------------------
+    # ---------------------------------------------------------------
     parser.add_argument("--rstats", action='store_true',
                         help="use sigma_clipped_stats() for avg,med,std")
     parser.add_argument("--tearing", action='store_true',
@@ -90,7 +90,8 @@ def main():
             print("#")
             print("# {}".format(os.path.basename(ffile)))
         # Construct a list of the HDU's to work on
-        hduids = iu.get_requested_image_hduids(optlist, hdulist)
+        hduids = iu.get_requested_image_hduids(hdulist, optlist.hduname,
+                                               optlist.hduindex)
         if optlist.quicklook:
             quicklook(optlist, hduids, hdulist)
         else:
@@ -107,7 +108,7 @@ def stats_proc(optlist, hduids, hdulist):
         pix = hdu.data
         name = hdu.name
         if optlist.bias:
-            iu.subtrace_bias(optlist.bstring, optlist.btype, hdu)
+            iu.subtract_bias(optlist.bstring, optlist.btype, hdu)
         slices = []
         (datasec, soscan, poscan) = iu.get_data_oscan_slices(hdu)
         if optlist.datasec:

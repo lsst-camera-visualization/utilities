@@ -91,7 +91,7 @@ def init_reg(hdui, hdulisto, region):
     return hduoid
 
 
-def init_hdu(hdui, hdulisto):
+def init_hdu(hdui, hdulisto, region=None):
     """
     Use hdui as a template to append a new hdu to hdulisto
     copy the header and set the size in preparation for data
@@ -103,14 +103,32 @@ def init_hdu(hdui, hdulisto):
         hdulisto.append(fits.ImageHDU(None, hdri, hdri['EXTNAME']))
     hduoid = len(hdulisto) - 1
     hdro = hdulisto[hduoid].header
-    # logging.debug('output header before:\n%s\n', hdro.tostring())
     hdro['NAXIS'] = 2
-    hdro.set('NAXIS1', hdri['NAXIS1'],
-             "size of the n'th axis", after='NAXIS')
-    hdro.set('NAXIS2', hdri['NAXIS2'],
-             "size of the n'th axis", after='NAXIS1')
+    hdro.set('NAXIS1', hdri['NAXIS1'], "size of the n'th axis", after='NAXIS')
+    hdro.set('NAXIS2', hdri['NAXIS2'], "size of the n'th axis", after='NAXIS1')
     hdro['BITPIX'] = -32
-    # logging.debug('output header after:\n%s\n', hdro.tostring())
+    # make changes to account for region of interest subimage
+    if region and region is not (None, None):
+        logging.debug('region = {}'.format(region))
+        naxis2 = ((region[0].stop or len(hdui.data[:, 0]))
+                  - (region[0].start or 0))
+        naxis1 = ((region[1].stop or len(hdui.data[0, :]))
+                  - (region[1].start or 0))
+        hdro.set('NAXIS1', naxis1,
+                 "size of the n'th axis", after='NAXIS')
+        hdro.set('NAXIS2', naxis2,
+                 "size of the n'th axis", after='NAXIS1')
+        # update any wcses
+        wcses = wcs.find_all_wcs(hdro, fix=False)
+        for w in wcses:
+            wreg = w.slice(region)
+            wreghdro = wreg.to_header()
+            for card in wreghdro.cards:
+                key = card.keyword
+                value = card.value
+                comment = card.comment
+                hdro.set(key, value, comment)
+    # logging.debug('output header:\n%s\n', hdro.tostring())
     return hduoid
 
 
@@ -126,7 +144,7 @@ def parse_region(reg):
     # reg = [x1:x2,y1:y2] -- standard rectangle)
     if re.match(r"([0-9]*):([0-9]+),\s*([0-9]+):([0-9]+)$", reg):
         (x1, x2, y1, y2) = re.match(
-            r"([0-9]*):([0-9]+),\s*([0-9]+):([0-9]+)$", reg).groups()
+            r"([0-9]+):([0-9]+),\s*([0-9]+):([0-9]+)$", reg).groups()
         retval = (slice(int(y1)-1, int(y2)), slice(int(x1)-1, int(x2)))
     #
     # reg = [x0,y1:y2] -- single column section)
@@ -181,7 +199,7 @@ def parse_region(reg):
     return retval
 
 
-def get_requested_image_hduids(optlist, hdulist):
+def get_requested_image_hduids(hdulist, hdunames=None, hduindices=None):
     """
     Return a list of imaage hduids requested in optlist or all by default.
     Check that they exist in hdulist and have data.  Requested hduids that
@@ -189,21 +207,21 @@ def get_requested_image_hduids(optlist, hdulist):
     """
     # Construct a list of candidate HDUs to work on
     chduids = []  # list of candidate hduids
-    if optlist.hduname:
-        for hduname in optlist.hduname:
+    if hdunames:
+        for name in hdunames:
             try:
-                chduids.append(hdulist.index_of(hduname))
+                chduids.append(hdulist.index_of(name))
             except KeyError as ke:
                 logging.error('KeyError: %s', ke)
-                logging.error('HDU[%s] not found, skipping', hduname)
-    if optlist.hduindex:
-        for hduid in optlist.hduindex:
+                logging.error('HDU[%s] not found, skipping', name)
+    if hduindices:
+        for hduid in hduindices:
             try:
                 hdu = hdulist[hduid]
                 chduids.append(hduid)
             except IndexError:
                 logging.error('HDU[%d] not found, skipping', hduid)
-    if not optlist.hduindex and not optlist.hduname:
+    if not hduindices and not hdunames:
         for hdu in hdulist:
             chduids.append(hdulist.index(hdu))
 
@@ -289,7 +307,8 @@ def subtract_bias(bstring, btype, hdu):
     elif len(bstring) >= 3:  # user supplies column selection
         # eg. a:b is minimum spec size, peel off outer brackets
         try:
-            logging.debug('use %s cols in hdu:%s bias subtraction', hdu.name)
+            logging.debug('use %s cols in hdu:%s bias subtraction',
+                          bstring, hdu.name)
             reg = re.sub(r"^\[*([0-9]+:[0-9]+)\]*$", r"\1", bstring)
             (x1, x2) = re.match(r"([0-9]+):([0-9]+)$", reg).groups()
             soscan = (soscan[0], slice(int(x1), int(x2)))
@@ -343,3 +362,82 @@ def long_substr(data):
                 if j > len(substr) and all(data[0][i:i+j] in x for x in data):
                     substr = data[0][i:i+j]
     return substr
+
+
+def cleave(arr, substr):
+    """
+    arr: array of strings
+    substr: used as a separator
+    Split each element of 'arr' into pre/post substrings before/after
+    the first occurance of 'substr'
+    Return the cleaved 'arr' as a 'pre_arr', 'post_arr' pair
+    """
+    cleav_str = "^(.*){}(.*)$".format(substr)
+    cleav_pat = re.compile(cleav_str)
+    pre_arr = []
+    post_arr = []
+    for istr in arr:
+        tl, tr = re.match(cleav_pat, istr).groups()
+        if tl and tr:
+            pre_arr.append(tl)
+            post_arr.append(tr)
+        else:  # if any pre string is 0 length this branch is done
+            return (None, None)
+
+    return (pre_arr, post_arr)
+
+
+def get_lcs_array(s_arr, ss_arr, index, order, minsz):
+    """
+    Find the longest common substring (lcs) of an array of strings
+    and recursively build a list of all common substrings longer than minsz
+    s_arr:    array of strings to process to find lcs
+    ss_arr:   substring array -- this is the product
+    index:    index in ss_arr of parent lcs
+    order:    insert new lcs before|after index
+    minsz:    shortest allowed common substring
+    """
+    # get longest common substring of strings in s_arr and
+    # insert into ss_arr according to index and order
+    lcstr = long_substr(s_arr)
+    if len(lcstr) > minsz:
+        if len(ss_arr) == 0:
+            logging.debug('lcstr=%s', lcstr)
+            logging.debug("first: ss_arr={}".format(ss_arr))
+            logging.debug("first: index={}".format(index))
+            ss_arr.append(lcstr)
+            logging.debug("first: ss_arr={}".format(ss_arr))
+            new_index = 0
+        else:
+            logging.debug('lcstr=%s', lcstr)
+            if order == "before":
+                logging.debug("before: ss_arr={}".format(ss_arr))
+                logging.debug("before: index={}".format(index))
+                ss_arr.insert(index, lcstr)
+                logging.debug("before: ss_arr={}".format(ss_arr))
+                new_index = index
+            elif order == "after":
+                # treat index as offset from end
+                logging.debug("after: ss_arr={}".format(ss_arr))
+                logging.debug("after: index={}".format(index))
+                if index == 0:
+                    ss_arr.append(lcstr)
+                else:
+                    ss_arr.insert(-1 * index, lcstr)
+                logging.debug("after: ss_arr={}".format(ss_arr))
+                new_index = index  # stay at same relative place from end
+            else:
+                logging.error('invalid order %s', order)
+                exit(1)
+    else:
+        return
+
+    pre_arr, post_arr = cleave(s_arr, lcstr)
+    if pre_arr:
+        if order == "after":
+            new_index = len(ss_arr) - new_index - 1
+        get_lcs_array(pre_arr, ss_arr, new_index, 'before', minsz)
+    if post_arr:
+        if order == "before":
+            new_index = len(ss_arr) - new_index - 1
+        get_lcs_array(post_arr, ss_arr, new_index, 'after', minsz)
