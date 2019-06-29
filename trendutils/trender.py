@@ -744,19 +744,20 @@ def main():
                                 gettz(tz_trending)).isoformat(
                                     timespec='seconds'), xstr)
                         if len(intervals) > 1:
-                            xlabel_str1 = "{} ({}[{}])".format(
+                            xlabelsize = 'small'
+                            xlabel_str_last = "{} ({}[{}])".format(
                                 dt.datetime.fromtimestamp(
                                     intervals[-1][xid]/1000,
                                     gettz(tz_trending)).isoformat(
                                         timespec='seconds'), xstr,
-                                len(intervals) - 1)
+                                        len(intervals) - 1)
                             if len(intervals) > 2:
-                                xlabel_str1 = "...{}".format(xlabel_str1)
+                                xlabel_str_last = "...{}".format(xlabel_str_last)
                             xlabel_str = "{}\n{}".format(xlabel_str,
-                                                         xlabel_str1)
-                        ax.set_xlabel("{}".format(xlabel_str,
+                                                     xlabel_str_last)
+                        ax.set_xlabel("{}".format(xlabel_str), fontsize='small', 
                                                   position=(0., 1e6),
-                                                  horizontalalignment='left'))
+                                                  horizontalalignment='left')
 
         # plot array padded with invisible boxes
         for pcnt in range(nax, nrows*ncols):

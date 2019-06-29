@@ -52,7 +52,7 @@ def parse_args():
 def main():
     """main logic:"""
     optlist = parse_args()
-    iu.init_logging()
+    iu.init_logging(optlist.debug)
 
     if optlist.scaling == 'density':
         window = 'boxcar'
