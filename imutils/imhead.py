@@ -80,7 +80,7 @@ def header_print(opts, hdulist):
     else:
         for hdu in hdulist:
             hdr = hdu.header
-            hduid = hdulist.index_of(hdu)
+            hduid = hdulist.index(hdu)
             if isinstance(hdu, (fits.PrimaryHDU, fits.ImageHDU,
                                 fits.CompImageHDU)) or opts.all:
                 print_single_hdr(text, hduid, hdu.name, hdr)
