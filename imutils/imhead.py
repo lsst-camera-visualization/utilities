@@ -76,7 +76,6 @@ def header_print(opts, hdulist):
             hdu = hdulist[hduid]
             hdr = hdu.header
             print_single_hdr(text, hduid, hdu.name, hdr)
-            print_single_hdr(text, hdu)
     else:
         for hdu in hdulist:
             hdr = hdu.header
