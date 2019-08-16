@@ -43,9 +43,9 @@ def parse_args():
     parser.add_argument("result", nargs='?',
                         help="output fits_image")
     hgroup = parser.add_mutually_exclusive_group()
-    hgroup.add_argument("--hduname", nargs='+',
+    hgroup.add_argument("--hduname", nargs='+', default=[],
                         metavar='idn', help="process HDU list by names")
-    hgroup.add_argument("--hduindex", nargs='+', type=int,
+    hgroup.add_argument("--hduindex", nargs='+', type=int, default=[],
                         metavar='idx', help="process HDU list by ids")
     parser.add_argument("--region", default=None,
                         help="region fmt: \"x1:x2, y1:y2\"")
@@ -93,43 +93,44 @@ def main():
         #
         # This needs work to allow more flexible hdulist2 type images
         # as-is, it enforces that names match for corresponding hdu's
+        hdu1 = hdulist1[hduid]
         if hdulist2:
-            hdu2id = hdulist2.index_of(hdulist1[hduid].name)
-            if not hdu2id:
-                logging.error('HDU %s does not exist in %s',
-                              hdulist1[hduid].name, hdulist2.filename())
+            if isinstance(hdulist2[hduid],
+                          (fits.ImageHDU, fits.CompImageHDU)):
+                hdu2 = hdulist2[hduid]
+            else:
+                logging.error('HDU %d does not exist in %s', hduid,
+                            hdulist2.filename())
         #
-        if hdulist2 and np.shape(hdulist1[hduid].data) != \
-                np.shape(hdulist2[hdu2id].data):
+        if hdulist2 and np.shape(hdu1.data) != np.shape(hdu2.data):
             logging.error("Images are not comensurate")
             exit(1)
 
         # prepare the output hdu
-        hduoid = iu.init_hdu(hdulist1[hduid], hdulisto, region)
+        hduo = iu.init_hdu(hdu1, hdulisto, region)
 
         # optionally subtract bias
         if optlist.bias:
-            iu.subtract_bias(optlist.bias, optlist.btype, hdulist1[hduid])
+            iu.subtract_bias(optlist.bias, optlist.btype, hdu1)
             if hdulist2:
-                iu.subtract_bias(optlist.bias, optlist.btype, hdulist2[hdu2id])
+                iu.subtract_bias(optlist.bias, optlist.btype, hdu2)
         #
         # do the arithmetic
         if hdulist2:
-            hdulisto[hduoid].data = ffcalc(hdulist1[hduid].data,
-                                           hdulist2[hdu2id].data,
+            hduo.data = ffcalc(hdu1.data, hdu2.data,
                                            optlist.op, region)
         else:  # scalar or list of scalars
             if len(operand2) == 1:
                 arg2 = float(operand2[0])
             else:
                 arg2 = float(operand2.pop(0))
-            hdulisto[hduoid].data = fscalc(hdulist1[hduid].data,
+            hduo.data = fscalc(hdulist1[hduid].data,
                                            arg2, optlist.op, region)
         # finish up this hdu
-        hdulisto[hduoid].update_header()
+        hduo.update_header()
         dtstr = datetime.datetime.utcnow().isoformat(
             timespec='milliseconds')
-        hdulisto[hduoid].add_checksum(dtstr)
+        hduo.add_checksum(dtstr)
 
     for hdu in hdulist1:
         # append to output if it does not contain image data

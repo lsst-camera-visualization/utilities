@@ -80,8 +80,7 @@ def main():
         try:
             hdulist = fits.open(ffile)
         except IOError as ioerr:
-            emsg = "IOError: {}".format(ioerr)
-            logging.error(emsg)
+            logging.error('IOError: %s', ioerr)
             exit(1)
         if optlist.info:  # just print the image info per file
             hdulist.info()

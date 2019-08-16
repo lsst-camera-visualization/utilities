@@ -497,10 +497,11 @@ def main():
                     date = dt.datetime.fromtimestamp(
                         tstamp/1000.0, gettz(tz_trending)).isoformat(
                             timespec='milliseconds')
-                    print(
-                        "{:<{wt}d} {:>{wv}g} {:>{wu}s}   {:<{wp}s}  {:<{wd}s}".format(
-                            int(tstamp), float(value), unitstr, path, date,
-                            wt=14, wv='12.7', wu=6, wp=30, wd=30))
+                    print("{:<{wt}d} {:>{wv}g} {:>{wu}s}   ".format(
+                        int(tstamp), float(value), unitstr,
+                        wt=14, wv='12.7', wu=6), end="")
+                    print("{:<{wp}s}  {:<{wd}s}".format(
+                        path, date, wt=14, wv='12.7', wu=6, wp=30, wd=30))
                 except IOError:
                     # 'Broken pipe' IOError when stdout is closed
                     pass
@@ -526,7 +527,8 @@ def main():
             dt.datetime.fromtimestamp(
                 tmax/1000, gettz(tz_trending)).isoformat(timespec='seconds')))
         print("# {:>4s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} {:>11s}".format(
-            'cnt', 'mean', 'median', 'stddev', 'min', 'max', 'd/dt 1/m'), end="")
+            'cnt', 'mean', 'median', 'stddev', 'min', 'max', 'd/dt 1/m'),
+            end="")
         if optlist.rstats:
             print("{:>8s} {:>8s} {:>8s}  ".format(
                 'rmean', 'rmedian', 'rstddev'), end="")
@@ -744,20 +746,19 @@ def main():
                                 gettz(tz_trending)).isoformat(
                                     timespec='seconds'), xstr)
                         if len(intervals) > 1:
-                            xlabelsize = 'small'
-                            xlabel_str_last = "{} ({}[{}])".format(
+                            xlabel_last = "{} ({}[{}])".format(
                                 dt.datetime.fromtimestamp(
                                     intervals[-1][xid]/1000,
                                     gettz(tz_trending)).isoformat(
                                         timespec='seconds'), xstr,
-                                        len(intervals) - 1)
+                                len(intervals) - 1)
                             if len(intervals) > 2:
-                                xlabel_str_last = "...{}".format(xlabel_str_last)
+                                xlabel_last = "...{}".format(xlabel_last)
                             xlabel_str = "{}\n{}".format(xlabel_str,
-                                                     xlabel_str_last)
-                        ax.set_xlabel("{}".format(xlabel_str), fontsize='small', 
-                                                  position=(0., 1e6),
-                                                  horizontalalignment='left')
+                                                         xlabel_last)
+                        ax.set_xlabel("{}".format(xlabel_str),
+                                      fontsize='small', position=(0., 1e6),
+                                      horizontalalignment='left')
 
         # plot array padded with invisible boxes
         for pcnt in range(nax, nrows*ncols):
@@ -800,7 +801,7 @@ def main():
         if optlist.title:
             logging.debug("using title=%s", optlist.title)
             fig.suptitle("{}".format(optlist.title))
-            fig.set_tight_layout({"pad": 2.4})
+            fig.set_tight_layout({"rect": [0, 0.03, 1, 0.95]})
             plt.show()
         else:
             fig.set_tight_layout(True)

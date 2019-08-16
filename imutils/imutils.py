@@ -30,10 +30,13 @@ def init_warnings():
     warnings.simplefilter('ignore', category=AstropyWarning)
 
 
-def create_output_hdulist(hdulisti, argv):
+def create_output_hdulist(hdulisti: fits.HDUList, argv: list) -> fits.HDUList:
     """
-    Using the input hdulist create the output hdulist with updates to
-    DATE and an HISTORY lines to record what was done
+    Create output HDUList from input HDUList for building new image
+
+    DATE and an HISTORY header cards added to record what was done
+    This is generally the first step before subsequent ops to modify
+    data arrays and changing additional header keys.
     """
     logging.debug("creating output hdulist")
     # Create the output image, copy and update header comments, history
@@ -54,55 +57,24 @@ def create_output_hdulist(hdulisti, argv):
     return hdulisto
 
 
-def init_reg(hdui, hdulisto, region):
+def init_hdu(hdui: fits.ImageHDU, hdulisto: fits.HDUList, region: tuple = None) -> fits.ImageHDU:
     """
-    Use hdui as a template to append a new hdu to hdulisto
-    copy the header and set the size in preparation defined by
-    the region for data to be added later. Only sets sizes for PrimaryHDU.
+    Append a new image HDU to output image using input HDU as a template.
+
+    Copy the header and set the size/region specs in preparation for data
+    to be added later.
+
+    Returns
+    -------
+    hduo: fits.ImageHDU That was created during the call.
+
     """
-    # create the output hdu region from the master
-    logging.debug('region = {}'.format(region))
+    # create the output hdu from the master, (primary already exists)
     if not isinstance(hdui, fits.PrimaryHDU):
         hdri = hdui.header.copy()
         hdulisto.append(fits.ImageHDU(None, hdri, hdri['EXTNAME']))
-    hduoid = len(hdulisto) - 1
-    logging.debug('hduoid=%s', hduoid)
-    naxis2 = (region[0].stop or len(hdui.data[:, 0])) - (region[0].start or 0)
-    naxis1 = (region[1].stop or len(hdui.data[0, :])) - (region[1].start or 0)
-    hdro = hdulisto[hduoid].header
-    hdro['NAXIS'] = 2
-    hdro.set('NAXIS1', naxis1,
-             "size of the n'th axis", after='NAXIS')
-    hdro.set('NAXIS2', naxis2,
-             "size of the n'th axis", after='NAXIS1')
-    hdro['EXTNAME'] = hdri['EXTNAME']
-    if hdri.count('CHANNEL'):
-        hdro['CHANNEL'] = hdri['CHANNEL']
-    # update any wcses
-    wcses = wcs.find_all_wcs(hdro, fix=False)
-    for w in wcses:
-        wreg = w.slice(region)
-        wreghdro = wreg.to_header()
-        for card in wreghdro.cards:
-            key = card.keyword
-            value = card.value
-            comment = card.comment
-            hdro.set(key, value, comment)
-    return hduoid
-
-
-def init_hdu(hdui, hdulisto, region=None):
-    """
-    Use hdui as a template to append a new hdu to hdulisto
-    copy the header and set the size in preparation for data
-    to be added later.  Only sets sizes for PrimaryHDU.
-    """
-    # create the output hdu from the master
-    if not isinstance(hdui, fits.PrimaryHDU):
-        hdri = hdui.header.copy()
-        hdulisto.append(fits.ImageHDU(None, hdri, hdri['EXTNAME']))
-    hduoid = len(hdulisto) - 1
-    hdro = hdulisto[hduoid].header
+    hduo = hdulisto[len(hdulisto) - 1]
+    hdro = hduo.header
     hdro['NAXIS'] = 2
     hdro.set('NAXIS1', hdri['NAXIS1'], "size of the n'th axis", after='NAXIS')
     hdro.set('NAXIS2', hdri['NAXIS2'], "size of the n'th axis", after='NAXIS1')
@@ -129,7 +101,7 @@ def init_hdu(hdui, hdulisto, region=None):
                 comment = card.comment
                 hdro.set(key, value, comment)
     # logging.debug('output header:\n%s\n', hdro.tostring())
-    return hduoid
+    return hduo
 
 
 def parse_region(reg):
@@ -199,28 +171,32 @@ def parse_region(reg):
     return retval
 
 
-def get_requested_image_hduids(hdulist, hdunames=None, hduindices=None):
+def get_requested_image_hduids(hdulist: fits.HDUList, hdunames:list, hduindices:list) -> list:
     """
     Return a list of imaage hduids requested in optlist or all by default.
+
     Check that they exist in hdulist and have data.  Requested hduids that
-    don't exist are skipped.
+    don't exist are skipped.  Redundant values are dropped.
     """
-    # Construct a list of candidate HDUs to work on
     chduids = []  # list of candidate hduids
-    if hdunames:
-        for name in hdunames:
-            try:
-                chduids.append(hdulist.index_of(name))
-            except KeyError as ke:
-                logging.error('KeyError: %s', ke)
-                logging.error('HDU[%s] not found, skipping', name)
-    if hduindices:
-        for hduid in hduindices:
-            try:
-                hdu = hdulist[hduid]
+    # if hdunames:
+    logging.debug('hdunames= %s', hdunames)
+    for name in hdunames:
+        try:
+            hduid = hdulist.index_of(name)
+            if hduid not in chduids:
                 chduids.append(hduid)
-            except IndexError:
-                logging.error('HDU[%d] not found, skipping', hduid)
+        except KeyError as ke:
+            logging.error('KeyError: %s', ke)
+            logging.error('HDU[%s] not found, skipping', name)
+    # if hduindices:
+    for hduid in hduindices:
+        try:
+            hdu = hdulist[hduid]
+            if hduid not in chduids:
+                chduids.append(hduid)
+        except IndexError:
+            logging.error('HDU[%d] not found, skipping', hduid)
     if not hduindices and not hdunames:
         for hdu in hdulist:
             chduids.append(hdulist.index(hdu))
@@ -232,26 +208,28 @@ def get_requested_image_hduids(hdulist, hdunames=None, hduindices=None):
         if isinstance(hdu, fits.PrimaryHDU):  # check for data
             if np.shape(hdu.data):
                 logging.debug('adding %s with index %d to hduid list',
-                              hdu.name, hdulist.index_of(hdu.name))
+                              hdu.name, hduid)
                 hduids.append(hduid)
         elif isinstance(hdu, (fits.ImageHDU, fits.CompImageHDU)):
             logging.debug('adding %s with index %d to hduid list',
-                          hdu.name, hdulist.index_of(hdu.name))
-            hduids.append(hdulist.index_of(hdu.name))
+                          hdu.name, hduid)
+            hduids.append(hduid)
         else:
             logging.debug('%s with index %d is not type (Comp)ImageHDU',
-                          hdu.name, hdulist.index_of(hdu.name))
+                          hdu.name, hduid)
     if hduids:
         return hduids
     return None
 
 
-def get_data_oscan_slices(hdu):
+def get_data_oscan_slices(hdu: fits.FitsHDU) -> tuple:
     """
-    Given an hdu, return datasec, serial and parallel overscan regions as
-    slices.  Returns a tuple of regions (datasec, soscan, poscan).
-    This will only work for data that are in time order so that the serial
-    overscan is at the "end" of the rows.
+    Get datasec, serial/parallel overscan as slice specifications.
+
+    Given an hdu, uses header keys to infer slice specs.  If a particular
+    region cannot be obtained a spec of (None, None) is returned for that region.
+    Returns a tuple of slice definitions (datasec, soscan, poscan).
+    The serial overscan is assumed to be at the end of each row is present.
     """
     # first get serial and parallel overscan region defs
     hdr = hdu.header
@@ -291,9 +269,10 @@ def get_data_oscan_slices(hdu):
     return (datasec, soscan, poscan)
 
 
-def subtract_bias(bstring, btype, hdu):
+def subtract_bias(bstring: str, btype: str, hdu: fits.ImageHDU) -> fits.ImageHDU:
     """
-    Subtract a bias (constant or row base or special) from an hdu.
+    Subtract a bias estimate (from overscans) from an hdu.
+
     Choices are mean, median, byrow or byrowcol subtraction of a bias
     calculated in either a given set of columns or using DATASEC to infer
     the overscan region. The rows-and-columns method uses both the serial
@@ -350,30 +329,35 @@ def subtract_bias(bstring, btype, hdu):
         exit(1)
 
 
-def long_substr(data):
+def long_substr(ilist: list) -> str:
     """
+    Find the longest common substring from a list of strings.
+
+    This is from:
     https://stackoverflow.com/questions/2892931/\
         longest-common-substring-from-more-than-two-strings-python#
     """
     substr = ''
-    if len(data) > 1 and len(data[0]) > 0:
-        for i in range(len(data[0])):
-            for j in range(len(data[0])-i+1):
-                if j > len(substr) and all(data[0][i:i+j] in x for x in data):
-                    substr = data[0][i:i+j]
+    if len(ilist) > 1 and len(ilist[0]) > 0:
+        for i in range(len(ilist[0])):
+            for j in range(len(ilist[0])-i+1):
+                if j > len(substr) and all(ilist[0][i:i+j] in x for x in ilist):
+                    substr = ilist[0][i:i+j]
     return substr
 
 
-def cleave(arr, substr):
+def cleave(arr: list, substr: str) -> (list, list):
     """
-    arr: array of strings
-    substr: used as a separator
-    Split each element of 'arr' into pre/post substrings before/after
-    the first occurance of 'substr'
-    Return the cleaved 'arr' as a 'pre_arr', 'post_arr' pair
+    Split each element in array of strings using a substring.
+
+    Returns
+    -------
+    pre_arr, post_arr :
+        Lists of strings with preceeding/following segments after splitting.
+        If either preceeding/following segment is empty, (None, None) is returned.
     """
-    cleav_str = "^(.*){}(.*)$".format(substr)
-    cleav_pat = re.compile(cleav_str)
+
+    cleav_pat = re.compile("^(.*){}(.*)$".format(substr))
     pre_arr = []
     post_arr = []
     for istr in arr:
@@ -381,24 +365,33 @@ def cleave(arr, substr):
         if tl and tr:
             pre_arr.append(tl)
             post_arr.append(tr)
-        else:  # if any pre string is 0 length this branch is done
+        else:  # if any pre/post string is 0 length this branch is done
             return (None, None)
 
     return (pre_arr, post_arr)
 
 
-def get_lcs_array(s_arr, ss_arr, index, order, minsz):
+def get_lcs_array(s_arr: list,  ss_arr: list, index: int, order: str, minsz: int) -> list:
     """
-    Find the longest common substring (lcs) of an array of strings
-    and recursively build a list of all common substrings longer than minsz
-    s_arr:    array of strings to process to find lcs
-    ss_arr:   substring array -- this is the product
-    index:    index in ss_arr of parent lcs
-    order:    insert new lcs before|after index
-    minsz:    shortest allowed common substring
+    Create ordered list of common substrings for list of strings.
+
+    Given a list of filenames or paths or similar, find the set of all
+    common substrings longer than 'minsz'.  The result can be used to create
+    a 'glob-like' pattern to summarize the original list of strings.
+
+    Parameters
+    ----------
+    s_arr: list Array of strings to process to find lcs.
+
+    ss_arr: list Substring array -- this is the product.
+
+    index: int Index in ss_arr of parent lcs.
+
+    order: str Insert new lcs before|after index.
+
+    minsz: int Shortest allowed common substring.
     """
-    # get longest common substring of strings in s_arr and
-    # insert into ss_arr according to index and order
+
     lcstr = long_substr(s_arr)
     if len(lcstr) > minsz:
         if len(ss_arr) == 0:
