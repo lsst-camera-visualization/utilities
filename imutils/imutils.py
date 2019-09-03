@@ -171,7 +171,8 @@ def parse_region(reg):
     return retval
 
 
-def get_requested_image_hduids(hdulist: fits.HDUList, hdunames:list, hduindices:list) -> list:
+def get_requested_image_hduids(hdulist: fits.HDUList,
+                               hdunames:list, hduindices:list) -> list:
     """
     Return a list of imaage hduids requested in optlist or all by default.
 
@@ -179,9 +180,8 @@ def get_requested_image_hduids(hdulist: fits.HDUList, hdunames:list, hduindices:
     don't exist are skipped.  Redundant values are dropped.
     """
     chduids = []  # list of candidate hduids
-    # if hdunames:
     logging.debug('hdunames= %s', hdunames)
-    for name in hdunames:
+    for name in hdunames or []:
         try:
             hduid = hdulist.index_of(name)
             if hduid not in chduids:
@@ -189,8 +189,7 @@ def get_requested_image_hduids(hdulist: fits.HDUList, hdunames:list, hduindices:
         except KeyError as ke:
             logging.error('KeyError: %s', ke)
             logging.error('HDU[%s] not found, skipping', name)
-    # if hduindices:
-    for hduid in hduindices:
+    for hduid in hduindices or []:
         try:
             hdu = hdulist[hduid]
             if hduid not in chduids:
