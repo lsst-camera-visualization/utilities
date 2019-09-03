@@ -194,6 +194,11 @@ def main():
     if optlist.info:  # just print the image info and exit
         exit()
 
+    if optlist.title:
+        fig.set_tight_layout(True, {"pad": 4.0})
+    else:
+        fig.set_tight_layout(True)
+
     # Deal with the legend (ugly)
     if optlist.overlay:
         ax = np.ravel(axes)[0]
