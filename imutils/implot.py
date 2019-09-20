@@ -100,7 +100,7 @@ def main():
     #     landscape has columns > rows
     #     portrait has more rows > columns w/room for legend
     plt.style.use(optlist.style)
-    plt.rcParams['figure.constrained_layout.use'] = True
+    # plt.rcParams['figure.constrained_layout.use'] = True
 
     fig, axes = get_fig_and_axis(len(optlist.fitsfile), optlist.layout,
                                  optlist.overlay, optlist.sharey)
