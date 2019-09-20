@@ -90,6 +90,7 @@ def parse_args():
                         help="overlay channel data vs time from tstart")
     pgroup.add_argument("--overlaystop", action='store_true',
                         help="overlay channel data vs time until tstop")
+
     #
     parser.add_argument("--nolegends", action='store_true',
                         help="Don't place any legends")
@@ -113,6 +114,8 @@ def parse_args():
     parser.add_argument("--timebins", nargs='?', const=0, type=int,
                         metavar='nBins (blank for autosize)', default=None,
                         help="plot time avg'd bins (esp for long durations)")
+    parser.add_argument("--sharex", action='store_true',
+                        help="use same x-axis limits on all plots")
     parser.add_argument("--debug", action='store_true',
                         help="Print additional debugging info")
     #
@@ -633,8 +636,12 @@ def main():
             fig, axes = plt.subplots(1, 1)
         else:
             fig_width, fig_height = plt.rcParams["figure.figsize"]
-            fig, axes = plt.subplots(nrows, ncols, sharex=False,
-                                     figsize=(fig_width*1.6, fig_height))
+            if optlist.sharex:
+                fig, axes = plt.subplots(nrows, ncols, sharex=True,
+                                        figsize=(fig_width*1.6, fig_height))
+            else:
+                fig, axes = plt.subplots(nrows, ncols, sharex=False,
+                                        figsize=(fig_width*1.6, fig_height))
 
         # loop over data channels and plot them on correct axis
         chids = list(chanspec.keys())

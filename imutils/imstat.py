@@ -195,9 +195,9 @@ def quicklook(optlist, hduids, hdulist):
         expt = float(hdulist[0].header['EXPTIME'])
     except KeyError as ke:
         emsg = "KeyError: {}".format(ke)
-        logging.warn(emsg)
+        logging.warning(emsg)
         emsg = "adu/sec won't be available"
-        logging.warn(emsg)
+        logging.warning(emsg)
         expt = 0.0
 
     # perform and print the given statistics quantities
@@ -218,7 +218,7 @@ def quicklook(optlist, hduids, hdulist):
         name = hdu.name
 
         if optlist.bias:
-            iu.subtrace_bias(optlist.bstring, optlist.btype, hdu)
+            iu.subtract_bias(optlist.bstring, optlist.btype, hdu)
 
         # get datasec, serial overscan, parallel overscan as slices
         (datasec, soscan, poscan) = iu.get_data_oscan_slices(hdu)
@@ -366,12 +366,12 @@ def eper_serial(datasec, soscan, hdu):
 def eper_parallel(datasec, poscan, hdu):
     """
     Given datasec and parallel overscan as slices, calculate
-    eper using the first ecols=3 columns of parallel overscan
+    eper using the first erows=3 rows of parallel overscan
     """
     erows = 3  # number of columns used for eper signal
     nrows = datasec[0].stop - datasec[0].start
 
-    # define signal region: last 5% in y
+    # define signal region: last 10% in y
     y0 = int(0.10 * datasec[0].start) + int(0.90 * datasec[0].stop)
     y1 = datasec[0].stop - 1
     sx0 = datasec[1].start

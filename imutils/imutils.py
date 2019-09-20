@@ -57,7 +57,8 @@ def create_output_hdulist(hdulisti: fits.HDUList, argv: list) -> fits.HDUList:
     return hdulisto
 
 
-def init_hdu(hdui: fits.ImageHDU, hdulisto: fits.HDUList, region: tuple = None) -> fits.ImageHDU:
+def init_hdu(hdui: fits.ImageHDU, hdulisto: fits.HDUList,
+             region: tuple = None) -> fits.ImageHDU:
     """
     Append a new image HDU to output image using input HDU as a template.
 
@@ -104,7 +105,7 @@ def init_hdu(hdui: fits.ImageHDU, hdulisto: fits.HDUList, region: tuple = None) 
     return hduo
 
 
-def parse_region(reg):
+def parse_region(reg: str) -> tuple:
     """
     Return a pair of slices (slice1, slice2) corresponding
     to the region give as input in ~IRAF format
@@ -370,7 +371,8 @@ def cleave(arr: list, substr: str) -> (list, list):
     return (pre_arr, post_arr)
 
 
-def get_lcs_array(s_arr: list,  ss_arr: list, index: int, order: str, minsz: int) -> list:
+def get_lcs_array(s_arr: list,  ss_arr: list, index: int,
+                  order: str, minsz: int) -> list:
     """
     Create ordered list of common substrings for list of strings.
 
@@ -391,7 +393,7 @@ def get_lcs_array(s_arr: list,  ss_arr: list, index: int, order: str, minsz: int
     minsz: int Shortest allowed common substring.
     """
 
-    lcstr = long_substr(s_arr)
+    lcstr = long_substr(s_arr)  # get longest common substring
     if len(lcstr) > minsz:
         if len(ss_arr) == 0:
             logging.debug('lcstr=%s', lcstr)
