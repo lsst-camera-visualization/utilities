@@ -53,8 +53,8 @@ def parse_args():
     # ---------------------------------------------------------------
     parser.add_argument("--rstats", action='store_true',
                         help="use sigma_clipped_stats() for avg,med,std")
-    parser.add_argument("--tearing", action='store_true',
-                        help="add tearing metric to quicklook output")
+    parser.add_argument("--tearing", nargs='?', metavar='nrows', const='datasec',
+            help="add tearing metric: nrows|divisdero|datasec(default)")
     parser.add_argument("--dipoles", action='store_true',
                         help="add dipole metric to quicklook output")
     parser.add_argument("--threshold", nargs=1, metavar='thresh', type=float,
@@ -214,7 +214,6 @@ def quicklook(optlist, hduids, hdulist):
     for hduid in hduids:
         #
         hdu = hdulist[hduid]
-        # hdr = hdu.header
         name = hdu.name
 
         if optlist.bias:
@@ -249,7 +248,13 @@ def quicklook(optlist, hduids, hdulist):
             if "eper:p-cte" in quick_fields:
                 print("{:>9s}".format("p-cte"), end="")
             if "tearing" in quick_fields:
-                print("{:>8s}".format("tml tmr"), end="")
+                if  re.match(r"^data", optlist.tearing):
+                    trows = int(datasec[0].stop - 1)
+                elif re.match(r"^div", optlist.tearing):
+                    trows = 100
+                else:
+                    trows = int(optlist.tearing)
+                print("  {:s}({:>4d}r){:s}".format("tml",trows,"tmr"), end="")
             if "dipoles" in quick_fields:
                 print("{:>9s}".format("%dipoles"), end="")
             if "threshold" in quick_fields:
@@ -306,8 +311,8 @@ def quicklook(optlist, hduids, hdulist):
         # ---------
         if "tearing" in quick_fields:
             logging.debug('tearing check----------')
-            tml, tmr = tearing_metric(hdu.data[datasec])
-            print(" {:>3.1f} {:>3.1f}".format(tml, tmr), end="")
+            tml, tmr = tearing_metric(hdu.data[datasec],trows)
+            print(" {:>5.2f}    {:>5.2f}".format(tml, tmr), end="")
         # ---------
         if "dipoles" in quick_fields:
             logging.debug('dipoles check----------')
@@ -368,7 +373,7 @@ def eper_parallel(datasec, poscan, hdu):
     Given datasec and parallel overscan as slices, calculate
     eper using the first erows=3 rows of parallel overscan
     """
-    erows = 3  # number of columns used for eper signal
+    erows = 3  # number of rows used for eper signal
     nrows = datasec[0].stop - datasec[0].start
 
     # define signal region: last 10% in y
@@ -402,23 +407,25 @@ def eper_parallel(datasec, poscan, hdu):
         return None
 
 
-def tearing_metric(buf):
+def tearing_metric(buf, trows):
     """
     buf is one segment (w/out pre/over-scan) of an lsst ccd
     return the fraction of pixels in the first and last column, (tml, tmr),
-    that are less than one stddev below the median of the nearest
-    40 pixels in the same row as the pixel being evaluated
-    If (tml, tmr) are near 1.0 then tearing is unlikely.
-    If they are below 0.5 it is very likely
+    that are less than 1.5 stddev away from the mean of the
+    nearby ~50 pixels in the same row as the pixel being evaluated
+    If (tml, tmr) are > O(0.5) then tearing may be present.
+    If they are well below 0.5 it is very unlikely
     """
     # left side
-    arr = np.median(buf[:, 2:40], axis=1)
-    arr = (arr - buf[:, 0])/np.std(arr)
-    tml = (1.0*np.size(arr) - np.searchsorted(arr, 1.0))/np.size(arr)
+    arr = np.mean(buf[10:trows, 3:50], axis=1)
+    astd = np.std(buf[10:trows, 3:50], axis=1)
+    arr = np.abs((1.0*buf[10:trows, 0] - arr)/astd) # col[0] diff in std's
+    tml = (1.0*np.size(arr) - np.searchsorted(arr, 1.5))/np.size(arr)
     # right side
-    arr = np.median(buf[:, -40:-2], axis=1)
-    arr = (arr - buf[:, -0])/np.std(arr)
-    tmr = (1.0*np.size(arr) - np.searchsorted(arr, 1.0))/np.size(arr)
+    arr = np.mean(buf[10:trows, -50:-3], axis=1)
+    astd = np.std(buf[10:trows, -50:-3], axis=1)
+    arr = np.abs((1.0*buf[10:trows, -1] - arr)/astd) # col[-1] diff
+    tmr = (1.0*np.size(arr) - np.searchsorted(arr, 1.5))/np.size(arr)
     return (tml, tmr)
 
 
