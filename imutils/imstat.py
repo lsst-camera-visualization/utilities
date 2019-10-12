@@ -107,7 +107,7 @@ def stats_proc(optlist, hduids, hdulist):
         pix = hdu.data
         name = hdu.name
         if optlist.bias:
-            iu.subtract_bias(optlist.bstring, optlist.btype, hdu)
+            iu.subtract_bias(optlist.bias, optlist.btype, hdu)
         slices = []
         (datasec, soscan, poscan) = iu.get_data_oscan_slices(hdu)
         if optlist.datasec:
@@ -217,7 +217,7 @@ def quicklook(optlist, hduids, hdulist):
         name = hdu.name
 
         if optlist.bias:
-            iu.subtract_bias(optlist.bstring, optlist.btype, hdu)
+            iu.subtract_bias(optlist.bias, optlist.btype, hdu)
 
         # get datasec, serial overscan, parallel overscan as slices
         (datasec, soscan, poscan) = iu.get_data_oscan_slices(hdu)
